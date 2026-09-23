@@ -1,0 +1,10 @@
+{
+  "name": "DIVO 20 Años — Vistiendo Momentos",
+  "description": "Sistema de gestión de invitaciones digitales, confirmación RSVP y escáner de acceso QR para el evento DIVO 20 años en Capilla Buen Pastor, Córdoba.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
