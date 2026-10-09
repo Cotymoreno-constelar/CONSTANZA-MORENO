@@ -13,7 +13,8 @@ import {
   UserPlus,
   Check,
   Copy,
-  Sparkles
+  Sparkles,
+  Edit2
 } from 'lucide-react';
 import { Guest, GuestCategory } from '../../types/guest';
 import { GuestService, QRContentMode } from '../../services/guestService';
@@ -24,13 +25,15 @@ interface QRGeneratorModalProps {
   onClose: () => void;
   guests: Guest[];
   onSelectGuestForCard: (guest: Guest) => void;
+  onEditGuest?: (guest: Guest) => void;
 }
 
 const GuestQRItem: React.FC<{
   guest: Guest;
   qrMode: QRContentMode;
   onOpenFullCard: (g: Guest) => void;
-}> = ({ guest, qrMode, onOpenFullCard }) => {
+  onEditGuest?: (g: Guest) => void;
+}> = ({ guest, qrMode, onOpenFullCard, onEditGuest }) => {
   const [qrUrl, setQrUrl] = useState<string>('');
   const [isDownloadingCard, setIsDownloadingCard] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -111,8 +114,20 @@ const GuestQRItem: React.FC<{
 
       {/* Guest Info */}
       <div className="mt-2.5 w-full">
-        <div className="font-montserrat font-bold text-xs text-white truncate">
-          {guest.firstName} {guest.lastName}
+        <div className="flex items-center justify-center gap-1">
+          <div className="font-montserrat font-bold text-xs text-white truncate">
+            {guest.firstName} {guest.lastName}
+          </div>
+          {onEditGuest && (
+            <button
+              type="button"
+              onClick={() => onEditGuest(guest)}
+              className="text-[#C5A059] hover:text-white p-0.5 transition-colors cursor-pointer shrink-0"
+              title="Editar datos del invitado"
+            >
+              <Edit2 className="w-3 h-3" />
+            </button>
+          )}
         </div>
         <div className="text-[10px] text-white/50 font-montserrat mt-0.5">
           {guest.companionsAllowed > 0
@@ -182,6 +197,7 @@ export const QRGeneratorModal: React.FC<QRGeneratorModalProps> = ({
   onClose,
   guests,
   onSelectGuestForCard,
+  onEditGuest,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -555,6 +571,7 @@ export const QRGeneratorModal: React.FC<QRGeneratorModalProps> = ({
                   onClose();
                   onSelectGuestForCard(g);
                 }}
+                onEditGuest={onEditGuest}
               />
             ))}
           </div>

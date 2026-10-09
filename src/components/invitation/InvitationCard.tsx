@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { jsPDF } from 'jspdf';
-import { Download, Share2, Copy, Check, QrCode as QrCodeIcon, Shirt } from 'lucide-react';
+import { Download, Share2, Copy, Check, QrCode as QrCodeIcon, Shirt, Edit2 } from 'lucide-react';
 import { Guest } from '../../types/guest';
 import { DivoLogo } from '../brand/DivoLogo';
 import { GuestService } from '../../services/guestService';
@@ -16,6 +16,7 @@ interface InvitationCardProps {
 export const InvitationCard: React.FC<InvitationCardProps> = ({
   guest,
   showActions = true,
+  onSelectForEdit,
   scale = 1,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -296,16 +297,29 @@ export const InvitationCard: React.FC<InvitationCardProps> = ({
             </a>
           </div>
 
-          {/* Copy link option */}
+          {/* Copy link option & Edit Guest */}
           <div className="flex items-center justify-between pt-1">
-            <button
-              onClick={handleCopyLink}
-              className="text-[11px] font-montserrat text-white/60 hover:text-[#C5A059] flex items-center gap-1.5 transition-colors cursor-pointer"
-              title="Copiar enlace web de esta invitación"
-            >
-              {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-[#C5A059]" />}
-              <span>{copied ? '¡Enlace copiado!' : 'Copiar enlace digital'}</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleCopyLink}
+                className="text-[11px] font-montserrat text-white/60 hover:text-[#C5A059] flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Copiar enlace web de esta invitación"
+              >
+                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-[#C5A059]" />}
+                <span>{copied ? '¡Enlace copiado!' : 'Copiar enlace digital'}</span>
+              </button>
+
+              {onSelectForEdit && (
+                <button
+                  onClick={() => onSelectForEdit(guest)}
+                  className="text-[11px] font-montserrat text-[#C5A059] hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Editar datos de este invitado"
+                >
+                  <Edit2 className="w-3 h-3" />
+                  <span>Editar datos</span>
+                </button>
+              )}
+            </div>
 
             {/* Status Pill */}
             <div className="text-[10px] text-neutral-400 font-mono">

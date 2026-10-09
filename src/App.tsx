@@ -482,7 +482,205 @@ export default function App() {
             </div>
 
             {selectedGuest ? (
-              <InvitationCard guest={selectedGuest} showActions={true} />
+              <div className="w-full flex flex-col lg:flex-row items-start justify-center gap-8">
+                <InvitationCard guest={selectedGuest} showActions={true} />
+
+                {/* Inline Live Editor for Selected Guest */}
+                <div className="w-full max-w-md bg-[#121212] border border-[#C5A059]/40 p-5 rounded-sm shadow-xl text-left">
+                  <div className="border-b border-white/10 pb-3 mb-4 flex items-center justify-between">
+                    <div>
+                      <span className="font-montserrat text-[10px] tracking-[0.2em] text-[#C5A059] uppercase font-bold block">
+                        EDICIÓN EN TIEMPO REAL
+                      </span>
+                      <h3 className="font-montserrat text-sm font-bold text-white mt-0.5">
+                        Editar Campos del Invitado
+                      </h3>
+                    </div>
+                    <span className="font-mono text-[10px] text-white/50">
+                      {selectedGuest.token}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 text-xs">
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-montserrat text-white/70 mb-1">
+                          Nombre
+                        </label>
+                        <input
+                          type="text"
+                          value={selectedGuest.firstName}
+                          onChange={(e) => {
+                            GuestService.updateGuest(selectedGuest.id, {
+                              firstName: e.target.value,
+                            }).then(handleGuestUpdated);
+                          }}
+                          className="w-full bg-[#1c1c1c] border border-white/20 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-montserrat text-white/70 mb-1">
+                          Apellido
+                        </label>
+                        <input
+                          type="text"
+                          value={selectedGuest.lastName}
+                          onChange={(e) => {
+                            GuestService.updateGuest(selectedGuest.id, {
+                              lastName: e.target.value,
+                            }).then(handleGuestUpdated);
+                          }}
+                          className="w-full bg-[#1c1c1c] border border-white/20 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-montserrat text-white/70 mb-1">
+                          Categoría
+                        </label>
+                        <select
+                          value={selectedGuest.category}
+                          onChange={(e) => {
+                            GuestService.updateGuest(selectedGuest.id, {
+                              category: e.target.value as any,
+                            }).then(handleGuestUpdated);
+                          }}
+                          className="w-full bg-[#1c1c1c] border border-white/20 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                        >
+                          <option value="Invitado General">Invitado General</option>
+                          <option value="VIP">VIP</option>
+                          <option value="Prensa">Prensa</option>
+                          <option value="Cliente Distinguido">Cliente Distinguido</option>
+                          <option value="Familia & Amigos">Familia & Amigos</option>
+                          <option value="Staff">Staff</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-montserrat text-white/70 mb-1">
+                          Ubicación / Sector
+                        </label>
+                        <input
+                          type="text"
+                          value={selectedGuest.tableOrSeat || ''}
+                          placeholder="Ej: Fila 1 - Capilla"
+                          onChange={(e) => {
+                            GuestService.updateGuest(selectedGuest.id, {
+                              tableOrSeat: e.target.value || undefined,
+                            }).then(handleGuestUpdated);
+                          }}
+                          className="w-full bg-[#1c1c1c] border border-white/20 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-montserrat text-white/70 mb-1">
+                          Estado RSVP
+                        </label>
+                        <select
+                          value={selectedGuest.status}
+                          onChange={(e) => {
+                            const nextStatus = e.target.value as any;
+                            GuestService.updateGuest(selectedGuest.id, {
+                              status: nextStatus,
+                              confirmedCompanions:
+                                nextStatus === 'confirmed'
+                                  ? selectedGuest.confirmedCompanions || selectedGuest.companionsAllowed
+                                  : 0,
+                            }).then(handleGuestUpdated);
+                          }}
+                          className="w-full bg-[#1c1c1c] border border-white/20 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                        >
+                          <option value="confirmed">✓ Confirmado</option>
+                          <option value="pending">⏳ Pendiente</option>
+                          <option value="declined">✕ No Asiste</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-montserrat text-white/70 mb-1">
+                          Acompañantes
+                        </label>
+                        <select
+                          value={
+                            selectedGuest.status === 'confirmed'
+                              ? selectedGuest.confirmedCompanions
+                              : selectedGuest.companionsAllowed
+                          }
+                          onChange={(e) => {
+                            const count = Number(e.target.value);
+                            GuestService.updateGuest(selectedGuest.id, {
+                              companionsAllowed: count,
+                              confirmedCompanions: selectedGuest.status === 'confirmed' ? count : 0,
+                            }).then(handleGuestUpdated);
+                          }}
+                          className="w-full bg-[#1c1c1c] border border-white/20 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                        >
+                          <option value={0}>0 (Individual)</option>
+                          <option value={1}>+1 Acompañante</option>
+                          <option value={2}>+2 Acompañantes</option>
+                          <option value={3}>+3 Acompañantes</option>
+                          <option value={4}>+4 Acompañantes</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-montserrat text-white/70 mb-1">
+                        Nombre del Acompañante
+                      </label>
+                      <input
+                        type="text"
+                        value={selectedGuest.companionName || ''}
+                        placeholder="Opcional"
+                        onChange={(e) => {
+                          GuestService.updateGuest(selectedGuest.id, {
+                            companionName: e.target.value || undefined,
+                          }).then(handleGuestUpdated);
+                        }}
+                        className="w-full bg-[#1c1c1c] border border-white/20 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-montserrat text-white/70 mb-1">
+                          Teléfono / WhatsApp
+                        </label>
+                        <input
+                          type="text"
+                          value={selectedGuest.phone || ''}
+                          placeholder="+54 9 351..."
+                          onChange={(e) => {
+                            GuestService.updateGuest(selectedGuest.id, {
+                              phone: e.target.value || undefined,
+                            }).then(handleGuestUpdated);
+                          }}
+                          className="w-full bg-[#1c1c1c] border border-white/20 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-montserrat text-white/70 mb-1">
+                          Email
+                        </label>
+                        <input
+                          type="email"
+                          value={selectedGuest.email || ''}
+                          placeholder="correo@ejemplo.com"
+                          onChange={(e) => {
+                            GuestService.updateGuest(selectedGuest.id, {
+                              email: e.target.value || undefined,
+                            }).then(handleGuestUpdated);
+                          }}
+                          className="w-full bg-[#1c1c1c] border border-white/20 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="text-center py-12 text-white/50">
                 Selecciona un invitado para previsualizar su tarjeta digital.

@@ -73,6 +73,74 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newTable, setNewTable] = useState('');
   const [newCompanionsAllowed, setNewCompanionsAllowed] = useState(1);
 
+  // Edit Guest Form
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editCategory, setEditCategory] = useState<GuestCategory>('Invitado General');
+  const [editTable, setEditTable] = useState('');
+  const [editCompanionsAllowed, setEditCompanionsAllowed] = useState(1);
+  const [editStatus, setEditStatus] = useState<RSVPStatus>('confirmed');
+  const [editConfirmedCompanions, setEditConfirmedCompanions] = useState(0);
+  const [editCompanionName, setEditCompanionName] = useState('');
+  const [editDietaryRestrictions, setEditDietaryRestrictions] = useState('');
+  const [editCongratulationMessage, setEditCongratulationMessage] = useState('');
+  const [editCheckedIn, setEditCheckedIn] = useState(false);
+  const [editCheckInNotes, setEditCheckInNotes] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  const openEditModal = (guest: Guest) => {
+    setEditingGuest(guest);
+    setEditFirstName(guest.firstName || '');
+    setEditLastName(guest.lastName || '');
+    setEditEmail(guest.email || '');
+    setEditPhone(guest.phone || '');
+    setEditCategory(guest.category || 'Invitado General');
+    setEditTable(guest.tableOrSeat || '');
+    setEditCompanionsAllowed(guest.companionsAllowed ?? 0);
+    setEditStatus(guest.status || 'confirmed');
+    setEditConfirmedCompanions(guest.confirmedCompanions ?? 0);
+    setEditCompanionName(guest.companionName || '');
+    setEditDietaryRestrictions(guest.dietaryRestrictions || '');
+    setEditCongratulationMessage(guest.congratulationMessage || '');
+    setEditCheckedIn(Boolean(guest.checkedIn));
+    setEditCheckInNotes(guest.checkInNotes || '');
+  };
+
+  const handleSaveEditedGuest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingGuest || !editFirstName.trim()) return;
+
+    setIsSavingEdit(true);
+    try {
+      const updated = await GuestService.updateGuest(editingGuest.id, {
+        firstName: editFirstName.trim(),
+        lastName: editLastName.trim(),
+        email: editEmail.trim() || undefined,
+        phone: editPhone.trim() || undefined,
+        category: editCategory,
+        tableOrSeat: editTable.trim() || undefined,
+        companionsAllowed: Number(editCompanionsAllowed),
+        status: editStatus,
+        confirmedCompanions: editStatus === 'confirmed' ? Number(editConfirmedCompanions) : 0,
+        companionName: editCompanionName.trim() || undefined,
+        dietaryRestrictions: editDietaryRestrictions.trim() || undefined,
+        congratulationMessage: editCongratulationMessage.trim() || undefined,
+        checkedIn: editCheckedIn,
+        checkedInAt: editCheckedIn ? editingGuest.checkedInAt || new Date().toISOString() : undefined,
+        checkInNotes: editCheckInNotes.trim() || undefined,
+      });
+
+      if (selectedGuestForCard?.id === updated.id) {
+        setSelectedGuestForCard(updated);
+      }
+      setEditingGuest(null);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   // Bulk Add Form
   const [bulkText, setBulkText] = useState('');
 
@@ -569,45 +637,131 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <tr key={guest.id} className="hover:bg-white/[0.03] transition-colors">
                     {/* Guest Name & Contact */}
                     <td className="py-3.5 px-4">
-                      <div className="font-montserrat font-bold text-white text-sm">
-                        {guest.firstName} {guest.lastName}
+                      <div className="flex items-center gap-1.5 group">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(guest)}
+                          className="font-montserrat font-bold text-white hover:text-[#E7CF98] text-sm text-left flex items-center gap-1.5 transition-colors cursor-pointer"
+                          title="Clic para editar todos los datos del invitado"
+                        >
+                          <span>
+                            {guest.firstName} {guest.lastName}
+                          </span>
+                          <Edit2 className="w-3 h-3 text-[#C5A059] opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
+                        </button>
                       </div>
-                      <div className="font-mono text-[10px] text-white/50 flex items-center gap-2 mt-0.5">
-                        {guest.phone && <span>📞 {guest.phone}</span>}
-                        {guest.email && <span>✉️ {guest.email}</span>}
+                      <div className="font-mono text-[10px] text-white/50 flex flex-wrap items-center gap-2 mt-0.5">
+                        {guest.phone ? (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(guest)}
+                            className="hover:text-white transition-colors cursor-pointer"
+                            title="Editar teléfono"
+                          >
+                            📞 {guest.phone}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(guest)}
+                            className="text-[#C5A059]/60 hover:text-[#C5A059] transition-colors cursor-pointer"
+                          >
+                            + Teléfono
+                          </button>
+                        )}
+                        {guest.email ? (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(guest)}
+                            className="hover:text-white transition-colors cursor-pointer"
+                            title="Editar email"
+                          >
+                            ✉️ {guest.email}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(guest)}
+                            className="text-[#C5A059]/60 hover:text-[#C5A059] transition-colors cursor-pointer"
+                          >
+                            + Email
+                          </button>
+                        )}
                       </div>
                     </td>
 
-                    {/* Category & Table */}
+                    {/* Category & Table (Inline Editable) */}
                     <td className="py-3.5 px-3">
-                      <span className="inline-block px-2 py-0.5 text-[9px] font-mono uppercase bg-[#C5A059]/15 border border-[#C5A059]/30 text-[#E7CF98]">
-                        {guest.category}
-                      </span>
-                      {guest.tableOrSeat && (
-                        <div className="text-[10px] text-neutral-400 mt-1 font-mono">
-                          {guest.tableOrSeat}
-                        </div>
-                      )}
+                      <select
+                        value={guest.category}
+                        onChange={(e) =>
+                          GuestService.updateGuest(guest.id, {
+                            category: e.target.value as GuestCategory,
+                          })
+                        }
+                        className="px-2 py-0.5 text-[9px] font-mono uppercase bg-[#C5A059]/15 border border-[#C5A059]/30 text-[#E7CF98] focus:outline-none focus:border-[#C5A059] cursor-pointer"
+                        title="Cambiar categoría del invitado"
+                      >
+                        <option value="Invitado General" className="bg-[#141414] text-white">Invitado General</option>
+                        <option value="VIP" className="bg-[#141414] text-white">VIP</option>
+                        <option value="Prensa" className="bg-[#141414] text-white">Prensa</option>
+                        <option value="Staff" className="bg-[#141414] text-white">Staff</option>
+                        <option value="Cliente Distinguido" className="bg-[#141414] text-white">Cliente Distinguido</option>
+                        <option value="Familia & Amigos" className="bg-[#141414] text-white">Familia & Amigos</option>
+                      </select>
+                      <div className="mt-1">
+                        <input
+                          type="text"
+                          defaultValue={guest.tableOrSeat || ''}
+                          key={`${guest.id}-${guest.tableOrSeat || ''}`}
+                          placeholder="+ Ubicación / Mesa..."
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val !== (guest.tableOrSeat || '')) {
+                              GuestService.updateGuest(guest.id, {
+                                tableOrSeat: val || undefined,
+                              });
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              (e.target as HTMLInputElement).blur();
+                            }
+                          }}
+                          className="w-36 bg-transparent hover:bg-white/5 focus:bg-[#1c1c1c] border border-transparent hover:border-white/15 focus:border-[#C5A059] px-1.5 py-0.5 text-[10px] text-neutral-300 placeholder-white/30 font-mono focus:outline-none transition-colors"
+                          title="Editar sector o mesa asignada (Enter para guardar)"
+                        />
+                      </div>
                     </td>
 
-                    {/* RSVP Status */}
+                    {/* RSVP Status (Inline Editable) */}
                     <td className="py-3.5 px-3">
-                      {guest.status === 'confirmed' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 font-montserrat text-[10px] font-bold uppercase">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                          Confirmado
-                        </span>
-                      ) : guest.status === 'declined' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-950/60 border border-rose-500/40 text-rose-300 font-montserrat text-[10px] font-bold uppercase">
-                          <XCircle className="w-3 h-3 text-rose-400" />
-                          No Asiste
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-950/60 border border-amber-500/40 text-amber-300 font-montserrat text-[10px] font-semibold uppercase">
-                          <Clock className="w-3 h-3 text-amber-400" />
-                          Pendiente
-                        </span>
-                      )}
+                      <select
+                        value={guest.status}
+                        onChange={(e) => {
+                          const newStatus = e.target.value as RSVPStatus;
+                          GuestService.updateGuest(guest.id, {
+                            status: newStatus,
+                            confirmedCompanions:
+                              newStatus === 'confirmed'
+                                ? guest.confirmedCompanions || guest.companionsAllowed
+                                : 0,
+                            respondedAt: new Date().toISOString(),
+                          });
+                        }}
+                        className={`px-2 py-1 font-montserrat text-[10px] font-bold uppercase border focus:outline-none cursor-pointer ${
+                          guest.status === 'confirmed'
+                            ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300'
+                            : guest.status === 'declined'
+                            ? 'bg-rose-950/60 border-rose-500/40 text-rose-300'
+                            : 'bg-amber-950/60 border-amber-500/40 text-amber-300'
+                        }`}
+                        title="Cambiar estado de confirmación (RSVP)"
+                      >
+                        <option value="confirmed" className="bg-[#141414] text-emerald-300">✓ Confirmado</option>
+                        <option value="pending" className="bg-[#141414] text-amber-300">⏳ Pendiente</option>
+                        <option value="declined" className="bg-[#141414] text-rose-300">✕ No Asiste</option>
+                      </select>
                       {guest.respondedAt && (
                         <div className="text-[9px] font-mono text-white/40 mt-1">
                           {new Date(guest.respondedAt).toLocaleDateString('es-AR')}
@@ -615,40 +769,100 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       )}
                     </td>
 
-                    {/* Companions */}
+                    {/* Companions (Inline Editable) */}
                     <td className="py-3.5 px-3 text-neutral-300">
-                      {guest.status === 'confirmed' ? (
-                        <div className="font-semibold text-white">
-                          {guest.confirmedCompanions > 0
-                            ? `+${guest.confirmedCompanions} (${guest.companionName || 'Acompañante'})`
-                            : 'Solo titular'}
-                        </div>
-                      ) : (
-                        <span className="text-white/40 text-[11px]">
-                          Permitidos: {guest.companionsAllowed}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={guest.status === 'confirmed' ? guest.confirmedCompanions : guest.companionsAllowed}
+                          onChange={(e) => {
+                            const count = Number(e.target.value);
+                            if (guest.status === 'confirmed') {
+                              GuestService.updateGuest(guest.id, {
+                                confirmedCompanions: count,
+                                companionsAllowed: Math.max(guest.companionsAllowed, count),
+                              });
+                            } else {
+                              GuestService.updateGuest(guest.id, {
+                                companionsAllowed: count,
+                              });
+                            }
+                          }}
+                          className="bg-[#1c1c1c] border border-white/15 px-1.5 py-0.5 text-[10px] font-mono text-white focus:outline-none focus:border-[#C5A059] cursor-pointer"
+                          title="Cantidad de acompañantes"
+                        >
+                          <option value={0}>Solo titular (0)</option>
+                          <option value={1}>+1 Acomp.</option>
+                          <option value={2}>+2 Acomp.</option>
+                          <option value={3}>+3 Acomp.</option>
+                          <option value={4}>+4 Acomp.</option>
+                        </select>
+                      </div>
+                      <div className="mt-1">
+                        <input
+                          type="text"
+                          defaultValue={guest.companionName || ''}
+                          key={`${guest.id}-comp-${guest.companionName || ''}`}
+                          placeholder="+ Nombre acomp..."
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val !== (guest.companionName || '')) {
+                              GuestService.updateGuest(guest.id, {
+                                companionName: val || undefined,
+                              });
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              (e.target as HTMLInputElement).blur();
+                            }
+                          }}
+                          className="w-36 bg-transparent hover:bg-white/5 focus:bg-[#1c1c1c] border border-transparent hover:border-white/15 focus:border-[#C5A059] px-1.5 py-0.5 text-[10px] text-neutral-300 placeholder-white/30 font-mono focus:outline-none transition-colors"
+                          title="Nombre del acompañante (Enter para guardar)"
+                        />
+                      </div>
                     </td>
 
-                    {/* Check-in Door */}
+                    {/* Check-in Door (Inline Toggle) */}
                     <td className="py-3.5 px-3">
                       {guest.checkedIn ? (
                         <div>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-950/70 border border-purple-500/50 text-purple-300 font-mono text-[10px] font-bold uppercase">
+                          <button
+                            type="button"
+                            onClick={() => GuestService.undoCheckIn(guest.id)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-950/70 hover:bg-rose-950/70 border border-purple-500/50 hover:border-rose-500/50 text-purple-300 hover:text-rose-300 font-mono text-[10px] font-bold uppercase transition-colors cursor-pointer"
+                            title="Clic para deshacer el ingreso en puerta"
+                          >
                             ✓ Ingresó
-                          </span>
+                          </button>
                           <div className="text-[9px] font-mono text-white/50 mt-0.5">
                             {guest.checkedInAt ? new Date(guest.checkedInAt).toLocaleTimeString('es-AR') : ''}
                           </div>
                         </div>
                       ) : (
-                        <span className="text-[11px] text-white/40 font-mono">No ingresó</span>
+                        <button
+                          type="button"
+                          onClick={() => GuestService.registerCheckIn(guest.id, 'Panel Admin', true)}
+                          className="text-[10px] px-2 py-0.5 bg-white/5 hover:bg-emerald-950/60 border border-white/10 hover:border-emerald-500/40 text-white/50 hover:text-emerald-300 font-mono transition-colors cursor-pointer"
+                          title="Clic para marcar ingreso en puerta manualmente"
+                        >
+                          Marcar ingreso
+                        </button>
                       )}
                     </td>
 
                     {/* Actions Toolbar */}
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        {/* Edit Guest Button */}
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(guest)}
+                          className="px-2 py-1 bg-[#C5A059]/20 hover:bg-[#C5A059] border border-[#C5A059]/50 text-[#E7CF98] hover:text-black font-montserrat text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors rounded-sm cursor-pointer"
+                          title="Editar todos los campos del invitado"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                          <span>Editar</span>
+                        </button>
                         {/* WhatsApp Invite Button */}
                         <a
                           href={waUrl}
@@ -744,7 +958,287 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               Tarjeta Digital & QR — DIVO 20 Años
             </h3>
 
-            <InvitationCard guest={selectedGuestForCard} showActions={true} />
+            <InvitationCard
+              guest={selectedGuestForCard}
+              showActions={true}
+              onSelectForEdit={(g) => {
+                setSelectedGuestForCard(null);
+                openEditModal(g);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Edit Existing Guest (All Fields Editable) */}
+      {editingGuest && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#141414] border border-[#C5A059] p-6 max-w-2xl w-full rounded-sm shadow-2xl relative my-8">
+            <button
+              type="button"
+              onClick={() => setEditingGuest(null)}
+              className="absolute top-3 right-3 text-white/60 hover:text-white font-mono text-sm p-1 cursor-pointer"
+            >
+              ✕
+            </button>
+
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4 pr-6">
+              <div>
+                <span className="font-montserrat text-[10px] tracking-[0.2em] text-[#C5A059] uppercase font-bold block">
+                  EDICIÓN COMPLETA DE INVITADO
+                </span>
+                <h3 className="font-montserrat text-base text-white font-bold mt-0.5">
+                  {editingGuest.firstName} {editingGuest.lastName}
+                </h3>
+              </div>
+              <span className="font-mono text-[10px] px-2 py-1 bg-white/5 border border-white/10 text-[#E7CF98]">
+                Token: {editingGuest.token}
+              </span>
+            </div>
+
+            <form onSubmit={handleSaveEditedGuest} className="space-y-4 text-left">
+              {/* Row 1: First Name & Last Name */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                    Nombre *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFirstName}
+                    onChange={(e) => setEditFirstName(e.target.value)}
+                    placeholder="Nombre del invitado"
+                    className="w-full bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                    Apellido
+                  </label>
+                  <input
+                    type="text"
+                    value={editLastName}
+                    onChange={(e) => setEditLastName(e.target.value)}
+                    placeholder="Apellido del invitado"
+                    className="w-full bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                  />
+                </div>
+              </div>
+
+              {/* Row 2: Phone & Email */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                    Teléfono / WhatsApp
+                  </label>
+                  <input
+                    type="text"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    placeholder="+54 9 351..."
+                    className="w-full bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder="invitado@correo.com"
+                    className="w-full bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                  />
+                </div>
+              </div>
+
+              {/* Row 3: Category & Table/Sector */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                    Categoría
+                  </label>
+                  <select
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value as GuestCategory)}
+                    className="w-full bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                  >
+                    <option value="Invitado General">Invitado General</option>
+                    <option value="VIP">VIP</option>
+                    <option value="Prensa">Prensa</option>
+                    <option value="Cliente Distinguido">Cliente Distinguido</option>
+                    <option value="Familia & Amigos">Familia & Amigos</option>
+                    <option value="Staff">Staff</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                    Ubicación / Sector / Mesa
+                  </label>
+                  <input
+                    type="text"
+                    value={editTable}
+                    onChange={(e) => setEditTable(e.target.value)}
+                    placeholder="Ej: Fila 1 - Sector VIP"
+                    className="w-full bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                  />
+                </div>
+              </div>
+
+              {/* Row 4: RSVP Status, Allowed Companions, Confirmed Companions */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-black/40 border border-white/10">
+                <div>
+                  <label className="block text-[11px] font-montserrat text-[#C5A059] font-semibold mb-1">
+                    Estado RSVP
+                  </label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => {
+                      const nextStatus = e.target.value as RSVPStatus;
+                      setEditStatus(nextStatus);
+                      if (nextStatus === 'confirmed' && editConfirmedCompanions === 0 && editCompanionsAllowed > 0) {
+                        setEditConfirmedCompanions(editCompanionsAllowed);
+                      }
+                    }}
+                    className="w-full bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                  >
+                    <option value="confirmed">✓ Confirmado</option>
+                    <option value="pending">⏳ Pendiente</option>
+                    <option value="declined">✕ No Asiste</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                    Acomp. Permitidos
+                  </label>
+                  <select
+                    value={editCompanionsAllowed}
+                    onChange={(e) => setEditCompanionsAllowed(Number(e.target.value))}
+                    className="w-full bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                  >
+                    <option value={0}>0 (Individual)</option>
+                    <option value={1}>1 Acompañante</option>
+                    <option value={2}>2 Acompañantes</option>
+                    <option value={3}>3 Acompañantes</option>
+                    <option value={4}>4 Acompañantes</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                    Acomp. Confirmados
+                  </label>
+                  <select
+                    value={editStatus === 'confirmed' ? editConfirmedCompanions : 0}
+                    disabled={editStatus !== 'confirmed'}
+                    onChange={(e) => setEditConfirmedCompanions(Number(e.target.value))}
+                    className="w-full bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C5A059] disabled:opacity-40"
+                  >
+                    <option value={0}>0 (Solo titular)</option>
+                    <option value={1}>+1 Acompañante</option>
+                    <option value={2}>+2 Acompañantes</option>
+                    <option value={3}>+3 Acompañantes</option>
+                    <option value={4}>+4 Acompañantes</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Row 5: Companion Name & Door Check-In Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                    Nombre del Acompañante
+                  </label>
+                  <input
+                    type="text"
+                    value={editCompanionName}
+                    onChange={(e) => setEditCompanionName(e.target.value)}
+                    placeholder="Nombre y apellido del acompañante"
+                    className="w-full bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                  />
+                </div>
+
+                <div className="flex flex-col justify-end">
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                    Estado de Ingreso en Puerta
+                  </label>
+                  <label className="flex items-center gap-2.5 bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={editCheckedIn}
+                      onChange={(e) => setEditCheckedIn(e.target.checked)}
+                      className="accent-[#C5A059] w-4 h-4"
+                    />
+                    <span className={editCheckedIn ? 'text-purple-300 font-semibold' : 'text-white/70'}>
+                      {editCheckedIn ? '✓ Ingresó en Puerta' : 'Aún no ingresó en puerta'}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Row 6: Message / Observations */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                    Mensaje de Felicitación / Dedicatoria
+                  </label>
+                  <input
+                    type="text"
+                    value={editCongratulationMessage}
+                    onChange={(e) => setEditCongratulationMessage(e.target.value)}
+                    placeholder="Mensaje para los 20 años de DIVO..."
+                    className="w-full bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                    Notas / Observaciones Internas
+                  </label>
+                  <input
+                    type="text"
+                    value={editCheckInNotes}
+                    onChange={(e) => setEditCheckInNotes(e.target.value)}
+                    placeholder="Notas de protocolo, dieta o puerta..."
+                    className="w-full bg-[#1e1e1e] border border-white/20 px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C5A059]"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = editingGuest;
+                    setEditingGuest(null);
+                    setSelectedGuestForCard(target);
+                  }}
+                  className="py-2.5 px-3 bg-white/5 hover:bg-white/10 border border-[#C5A059]/40 text-[#E7CF98] font-montserrat text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>Ver Tarjeta & QR</span>
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingGuest(null)}
+                    className="py-2.5 px-4 bg-transparent border border-white/20 text-white font-montserrat text-xs uppercase cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingEdit}
+                    className="py-2.5 px-6 bg-[#C5A059] hover:bg-[#d4af37] text-black font-montserrat text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    {isSavingEdit ? 'Guardando...' : 'Guardar Cambios'}
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -887,6 +1381,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onClose={() => setIsBatchDownloadModalOpen(false)}
         guests={guests}
         onSelectGuestForCard={(g) => setSelectedGuestForCard(g)}
+        onEditGuest={(g) => {
+          setIsBatchDownloadModalOpen(false);
+          openEditModal(g);
+        }}
       />
 
       {/* MODAL: Recordatorio Día del Evento WhatsApp */}

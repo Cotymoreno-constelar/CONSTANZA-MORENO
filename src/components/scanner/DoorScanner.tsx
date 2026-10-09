@@ -1185,24 +1185,63 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
 
                 <div className="mt-4 pt-3 border-t border-emerald-500/30 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                   <div className="bg-black/40 p-2.5 border border-emerald-500/20">
-                    <span className="text-neutral-400 block text-[10px]">Acompañantes autorizados:</span>
-                    <span className="font-bold text-white">
-                      {scannedGuest.confirmedCompanions > 0
-                        ? `Titular + ${scannedGuest.confirmedCompanions} (${scannedGuest.companionName || 'Acompañante'})`
-                        : 'Ingreso Individual (1 Persona)'}
-                    </span>
+                    <span className="text-neutral-400 block text-[10px] mb-1">Acompañantes autorizados:</span>
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={scannedGuest.confirmedCompanions || 0}
+                        onChange={async (e) => {
+                          const count = Number(e.target.value);
+                          const updated = await GuestService.updateGuest(scannedGuest.id, {
+                            confirmedCompanions: count,
+                            companionsAllowed: Math.max(scannedGuest.companionsAllowed, count),
+                          });
+                          setScannedGuest(updated);
+                          onGuestUpdated(updated);
+                        }}
+                        className="bg-[#181818] border border-emerald-500/40 px-2 py-1 text-xs font-bold text-white focus:outline-none focus:border-[#C5A059]"
+                      >
+                        <option value={0}>Individual (0)</option>
+                        <option value={1}>Titular + 1</option>
+                        <option value={2}>Titular + 2</option>
+                        <option value={3}>Titular + 3</option>
+                        <option value={4}>Titular + 4</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={scannedGuest.companionName || ''}
+                        placeholder="Nombre acomp..."
+                        onChange={async (e) => {
+                          const updated = await GuestService.updateGuest(scannedGuest.id, {
+                            companionName: e.target.value || undefined,
+                          });
+                          setScannedGuest(updated);
+                          onGuestUpdated(updated);
+                        }}
+                        className="w-full bg-[#181818] border border-emerald-500/30 px-2 py-1 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#C5A059]"
+                      />
+                    </div>
                   </div>
 
                   <div className="bg-black/40 p-2.5 border border-emerald-500/20">
-                    <span className="text-neutral-400 block text-[10px]">Ubicación / Sector:</span>
-                    <span className="font-bold text-[#E7CF98]">
-                      {scannedGuest.tableOrSeat || 'Sector General'}
-                    </span>
+                    <span className="text-neutral-400 block text-[10px] mb-1">Ubicación / Sector:</span>
+                    <input
+                      type="text"
+                      value={scannedGuest.tableOrSeat || ''}
+                      placeholder="Sector General"
+                      onChange={async (e) => {
+                        const updated = await GuestService.updateGuest(scannedGuest.id, {
+                          tableOrSeat: e.target.value || undefined,
+                        });
+                        setScannedGuest(updated);
+                        onGuestUpdated(updated);
+                      }}
+                      className="w-full bg-[#181818] border border-emerald-500/30 px-2 py-1 text-xs font-bold text-[#E7CF98] placeholder-white/30 focus:outline-none focus:border-[#C5A059]"
+                    />
                   </div>
 
                   <div className="bg-black/40 p-2.5 border border-emerald-500/20">
                     <span className="text-neutral-400 block text-[10px]">Estado de ingreso:</span>
-                    <span className="font-bold text-emerald-400">
+                    <span className="font-bold text-emerald-400 block mt-1">
                       {scannedGuest.checkedIn
                         ? `Ingresó a las ${new Date(scannedGuest.checkedInAt!).toLocaleTimeString('es-AR')}`
                         : 'En puerta (Listo para ingresar)'}
