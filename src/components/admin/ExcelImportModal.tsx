@@ -269,6 +269,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   const [defaultCompanions, setDefaultCompanions] = useState<number>(1);
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [skipDuplicates, setSkipDuplicates] = useState(true);
+  const [replaceExisting, setReplaceExisting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importSuccessCount, setImportSuccessCount] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -620,7 +621,8 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
           tableOrSeat: r.tableOrSeat.trim() || undefined,
           status: r.status,
           companionName: r.companionName.trim() || undefined,
-        }))
+        })),
+        replaceExisting
       );
       setImportSuccessCount(selectedRows.length);
       setParsedRows([]);
@@ -895,7 +897,27 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                {parsedRows.some((r) => r.isDuplicate) && (
+                {existingGuests.length > 0 && (
+                  <label className="flex items-center gap-1.5 text-xs text-rose-300 bg-rose-950/30 border border-rose-500/30 px-2.5 py-1 font-montserrat cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={replaceExisting}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setReplaceExisting(checked);
+                        if (checked) {
+                          setParsedRows((prev) => prev.map((r) => ({ ...r, selected: true })));
+                        }
+                      }}
+                      className="accent-rose-500"
+                    />
+                    <span>
+                      Reemplazar padrón actual (eliminar los {existingGuests.length} existentes)
+                    </span>
+                  </label>
+                )}
+
+                {!replaceExisting && parsedRows.some((r) => r.isDuplicate) && (
                   <label className="flex items-center gap-1.5 text-xs text-amber-300 font-montserrat cursor-pointer">
                     <input
                       type="checkbox"

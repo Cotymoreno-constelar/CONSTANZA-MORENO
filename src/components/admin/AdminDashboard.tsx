@@ -474,6 +474,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <Download className="w-3.5 h-3.5 text-[#C5A059]" />
             <span>Exportar Excel</span>
           </button>
+
+          {/* Vaciar Padrón */}
+          {guests.length > 0 && (
+            <button
+              onClick={async () => {
+                if (window.confirm(`¿Estás seguro de eliminar los ${guests.length} invitados actuales y vaciar el padrón por completo?`)) {
+                  await GuestService.clearAllGuests();
+                  setSelectedGuestForCard(null);
+                }
+              }}
+              className="py-2.5 px-3.5 bg-rose-950/30 hover:bg-rose-900/60 text-rose-300 border border-rose-500/40 font-montserrat text-xs tracking-wider uppercase font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Eliminar todos los invitados actuales del padrón"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>Vaciar Padrón</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -933,8 +950,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               {filteredGuests.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-white/40 font-montserrat">
-                    No se encontraron invitados con los filtros seleccionados.
+                  <td colSpan={6} className="py-12 text-center text-white/60 font-montserrat">
+                    {guests.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <div className="text-sm font-bold text-[#E7CF98] uppercase tracking-wider">
+                          El padrón actual fue vaciado (0 invitados)
+                        </div>
+                        <p className="text-xs text-white/50 max-w-md">
+                          Ya se eliminaron todos los invitados anteriores. Podés cargar tu nueva lista desde Excel, copiar y pegar los nombres, o agregar invitados uno por uno.
+                        </p>
+                        <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsBulkModalOpen(true)}
+                            className="py-2.5 px-5 bg-[#C5A059] hover:bg-[#d4af37] text-black font-montserrat text-xs font-bold uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-md"
+                          >
+                            <FileSpreadsheet className="w-4 h-4" />
+                            <span>Importar o Pegar Lista de Invitados</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsAddModalOpen(true)}
+                            className="py-2.5 px-4 bg-[#1c1c1c] hover:bg-[#282828] border border-[#C5A059]/50 text-white font-montserrat text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <UserPlus className="w-4 h-4 text-[#C5A059]" />
+                            <span>Agregar Invitado Manualmente</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      'No se encontraron invitados con los filtros seleccionados.'
+                    )}
                   </td>
                 </tr>
               )}

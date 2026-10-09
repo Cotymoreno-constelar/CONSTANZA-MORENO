@@ -1,7 +1,8 @@
 import { Guest, EventStats, RSVPStatus } from '../types/guest';
 import { INITIAL_GUESTS } from '../data/initialGuests';
 
-const STORAGE_KEY = 'divo_20_guests_data_v1';
+const STORAGE_KEY = 'divo_20_guests_data_v3';
+const LEGACY_STORAGE_KEYS = ['divo_20_guests_data_v1', 'divo_20_guests_data_v2'];
 const QR_MODE_STORAGE_KEY = 'divo_20_qr_mode_v1';
 const CUSTOM_DOMAIN_STORAGE_KEY = 'divo_20_custom_domain_v1';
 
@@ -47,19 +48,11 @@ export class GuestService {
 
   private static getLocalGuests(): Guest[] {
     try {
+      LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
       const data = localStorage.getItem(STORAGE_KEY);
       if (data) {
         const parsed: Guest[] = JSON.parse(data);
         if (Array.isArray(parsed)) {
-          const existingTokens = new Set(parsed.map((g) => (g.token || '').toLowerCase()));
-          const missingInitial = INITIAL_GUESTS.filter(
-            (ig) => !existingTokens.has(ig.token.toLowerCase())
-          );
-          if (missingInitial.length > 0) {
-            const merged = [...missingInitial, ...parsed];
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-            return merged;
-          }
           return parsed;
         }
       }
@@ -143,29 +136,6 @@ export class GuestService {
       if (response.ok) {
         const serverGuests = await response.json();
         if (Array.isArray(serverGuests)) {
-          // Merge local guests that might not have been persisted to server yet
-          const serverTokens = new Set(serverGuests.map((g: Guest) => g.token.toLowerCase()));
-          const serverIds = new Set(serverGuests.map((g: Guest) => g.id.toLowerCase()));
-          const unsyncedLocal = local.filter(
-            (lg) =>
-              lg &&
-              lg.id &&
-              lg.token &&
-              !serverIds.has(lg.id.toLowerCase()) &&
-              !serverTokens.has(lg.token.toLowerCase())
-          );
-
-          if (unsyncedLocal.length > 0) {
-            const merged = [...unsyncedLocal, ...serverGuests];
-            this.setLocalGuests(merged);
-            fetch('/api/guests/sync', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ guests: unsyncedLocal }),
-            }).catch(() => {});
-            return merged;
-          }
-
           this.setLocalGuests(serverGuests);
           return serverGuests;
         }
@@ -261,7 +231,8 @@ export class GuestService {
         status?: RSVPStatus;
         confirmedCompanions?: number;
       }
-    >
+    >,
+    replaceAll: boolean = false
   ): Promise<Guest[]> {
     const now = new Date().toISOString();
     const newGuests: Guest[] = guestsData.map((guestData) => {
@@ -293,20 +264,29 @@ export class GuestService {
     });
 
     const current = this.getLocalGuests();
-    const updated = [...newGuests, ...current];
+    const updated = replaceAll ? [...newGuests] : [...newGuests, ...current];
     this.setLocalGuests(updated);
 
     try {
       await fetch('/api/guests/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guests: newGuests }),
+        body: JSON.stringify({ guests: newGuests, replaceAll }),
       });
     } catch {
       // Local storage already updated
     }
 
     return newGuests;
+  }
+
+  public static async clearAllGuests(): Promise<void> {
+    this.setLocalGuests([]);
+    try {
+      await fetch('/api/guests/clear', { method: 'POST' });
+    } catch {
+      // Local storage already cleared
+    }
   }
 
   public static async updateGuest(id: string, updates: Partial<Guest>): Promise<Guest> {

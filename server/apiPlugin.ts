@@ -119,6 +119,15 @@ export function divoApiPlugin(): Plugin {
         if (url === '/api/guests/bulk' && req.method === 'POST') {
           parseBody((body) => {
             const incoming: Guest[] = Array.isArray(body) ? body : (body.guests || []);
+            const replaceAll = Boolean(body && body.replaceAll);
+            if (replaceAll) {
+              guests = [...incoming];
+              saveDataFile(guests);
+              broadcast({ type: 'SYNC_ALL', guests });
+              res.writeHead(201);
+              res.end(JSON.stringify({ success: true, added: guests.length, guests }));
+              return;
+            }
             guests = ensureDataFile();
             const existingMap = new Map(guests.map((g) => [g.id.toLowerCase(), g]));
             const added: Guest[] = [];
@@ -142,6 +151,16 @@ export function divoApiPlugin(): Plugin {
             res.writeHead(201);
             res.end(JSON.stringify({ success: true, added: added.length, guests }));
           });
+          return;
+        }
+
+        // POST /api/guests/clear (Clear all guests)
+        if (url === '/api/guests/clear' && req.method === 'POST') {
+          guests = [];
+          saveDataFile(guests);
+          broadcast({ type: 'SYNC_ALL', guests });
+          res.writeHead(200);
+          res.end(JSON.stringify({ success: true, guests: [] }));
           return;
         }
 
