@@ -1,4 +1,28 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+
+export const CUSTOM_LOGO_STORAGE_KEY = 'divo_custom_logo_data_url';
+export const CUSTOM_LOGO_EVENT = 'divo-logo-updated';
+
+export const getCustomLogoUrl = (): string | null => {
+  try {
+    return localStorage.getItem(CUSTOM_LOGO_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+};
+
+export const setCustomLogoUrl = (dataUrl: string | null): void => {
+  try {
+    if (dataUrl) {
+      localStorage.setItem(CUSTOM_LOGO_STORAGE_KEY, dataUrl);
+    } else {
+      localStorage.removeItem(CUSTOM_LOGO_STORAGE_KEY);
+    }
+    window.dispatchEvent(new Event(CUSTOM_LOGO_EVENT));
+  } catch (err) {
+    console.error('Error guardando el logo personalizado:', err);
+  }
+};
 
 interface DivoLogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'card-foot' | 'badge';
@@ -8,6 +32,85 @@ interface DivoLogoProps {
   theme?: 'dark' | 'light';
 }
 
+/**
+ * Vector exacto del logo oficial de DIVO TRAJES Y ETIQUETA (con la V alada superior,
+ * tipografía geométrica ancha y filetes horizontales partidos).
+ * Si el usuario sube además el PNG por el panel Admin, usa el PNG manteniendo "20 años" al lado.
+ */
+const DivoOfficialMark: React.FC<{
+  customLogo: string | null;
+  className?: string;
+  isLight?: boolean;
+}> = ({ customLogo, className = '', isLight = false }) => {
+  if (customLogo) {
+    return (
+      <img
+        src={customLogo}
+        alt="DIVO Trajes y Etiqueta"
+        className={`${className} w-auto object-contain select-none`}
+        crossOrigin="anonymous"
+      />
+    );
+  }
+
+  const fillColor = isLight ? '#000000' : '#FFFFFF';
+
+  return (
+    <svg
+      viewBox="0 0 1000 300"
+      className={`${className} w-auto select-none overflow-visible`}
+      aria-label="DIVO Trajes y Etiqueta"
+      role="img"
+    >
+      <defs>
+        <filter id="divo-drop-shadow" x="-10%" y="-10%" width="120%" height="130%">
+          <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#000000" floodOpacity="0.65" />
+        </filter>
+      </defs>
+      <g fill={fillColor} filter={isLight ? undefined : 'url(#divo-drop-shadow)'}>
+        {/* V central con alas horizontales superiores extendidas sobre D-I y O */}
+        <path d="M 33 28 L 383 28 L 514 159 L 645 28 L 964 28 L 964 41 L 684 41 L 530 194 L 499 194 L 345 41 L 33 41 Z" />
+
+        {/* Letra D geométrica ancha */}
+        <path
+          fillRule="evenodd"
+          d="M 33 62 L 155 62 C 242 62 298 83 298 114.5 C 298 146 242 167 155 167 L 33 167 Z M 78 77 L 148 77 C 215 77 252 91 252 114.5 C 252 138 215 152 148 152 L 78 152 Z"
+        />
+
+        {/* Letra I */}
+        <rect x="322" y="62" width="31" height="105" />
+
+        {/* Letra O ovalada ancha */}
+        <path
+          fillRule="evenodd"
+          d="M 804 57 A 160 57.5 0 1 0 804 172 A 160 57.5 0 1 0 804 57 Z M 804 73 A 114 41.5 0 1 1 804 156 A 114 41.5 0 1 1 804 73 Z"
+        />
+
+        {/* Líneas horizontales intermedias partidas a los lados del vértice de la V */}
+        <rect x="33" y="185" width="451" height="9" />
+        <rect x="549" y="185" width="415" height="9" />
+
+        {/* Texto TRAJES Y ETIQUETA en serif clásica con espaciado ancho */}
+        <text
+          x="498"
+          y="241"
+          textAnchor="middle"
+          fontFamily="'Old Standard TT', Georgia, 'Times New Roman', serif"
+          fontWeight="700"
+          fontSize="47"
+          letterSpacing="11"
+          fill={fillColor}
+        >
+          TRAJES &#160; Y &#160; ETIQUETA
+        </text>
+
+        {/* Línea horizontal inferior continua */}
+        <rect x="33" y="256" width="931" height="9" />
+      </g>
+    </svg>
+  );
+};
+
 export const DivoLogo: React.FC<DivoLogoProps> = ({
   size = 'md',
   showSubtext = true,
@@ -15,49 +118,52 @@ export const DivoLogo: React.FC<DivoLogoProps> = ({
   className = '',
   theme = 'dark',
 }) => {
+  const [customLogo, setCustomLogo] = useState<string | null>(() => getCustomLogoUrl());
+
+  useEffect(() => {
+    const handleLogoChange = () => {
+      setCustomLogo(getCustomLogoUrl());
+    };
+    window.addEventListener(CUSTOM_LOGO_EVENT, handleLogoChange);
+    window.addEventListener('storage', handleLogoChange);
+    return () => {
+      window.removeEventListener(CUSTOM_LOGO_EVENT, handleLogoChange);
+      window.removeEventListener('storage', handleLogoChange);
+    };
+  }, []);
+
   const isLight = theme === 'light';
-  const textColor = isLight ? 'text-black' : 'text-white';
   const subColor = isLight ? 'text-neutral-700' : 'text-[#FAF7F2]';
 
-  // Compact size for table badges or small headers
+  // Compact size for table badges or top navigation bar
   if (size === 'badge' || size === 'sm') {
     return (
-      <div className={`inline-flex items-center gap-2 select-none ${className}`}>
-        <div className="flex flex-col items-start leading-none">
-          <span className={`font-montserrat font-black tracking-wider text-sm ${textColor}`}>
-            DIVO
-          </span>
-          <span className="font-montserrat text-[7px] tracking-[0.2em] text-[#C5A059] uppercase font-semibold">
-            Trajes & Etiqueta
-          </span>
-        </div>
+      <div className={`inline-flex items-center gap-2.5 select-none ${className}`}>
+        <DivoOfficialMark
+          customLogo={customLogo}
+          isLight={isLight}
+          className={size === 'badge' ? 'h-6 sm:h-7' : 'h-7 sm:h-8'}
+        />
         <div className="h-5 w-[1px] bg-[#C5A059]/40 mx-0.5"></div>
         <div className="flex items-baseline leading-none">
-          <span className="font-old-standard text-lg text-[#C5A059] font-bold">20</span>
-          <span className="font-old-standard italic text-xs text-[#C5A059] ml-0.5">años</span>
+          <span className="font-old-standard text-lg sm:text-xl text-[#C5A059] font-bold">20</span>
+          <span className="font-old-standard italic text-xs sm:text-sm text-[#C5A059] ml-0.5">años</span>
         </div>
       </div>
     );
   }
 
-  // Card Foot variant (optimized for bottom of invitation card as seen in Slide 7)
+  // Card Foot variant (optimized for bottom of invitation card)
   if (size === 'card-foot') {
     return (
       <div className={`flex flex-col items-center select-none ${className}`}>
         <div className="flex items-center gap-3">
-          {/* DIVO Trajes y Etiqueta Box */}
-          <div className="flex flex-col items-center">
-            <div className="flex items-center">
-              <span className="font-montserrat font-black text-xl tracking-[0.15em] text-white">
-                DIVO
-              </span>
-            </div>
-            <div className="border-t border-b border-white/60 w-full text-center py-[1.5px] px-1 mt-0.5">
-              <span className="font-montserrat text-[6.5px] tracking-[0.25em] text-white/90 font-medium uppercase block">
-                TRAJES Y ETIQUETA
-              </span>
-            </div>
-          </div>
+          {/* Official DIVO Trajes y Etiqueta Logo */}
+          <DivoOfficialMark
+            customLogo={customLogo}
+            isLight={false}
+            className="h-9 sm:h-10"
+          />
 
           <div className="h-8 w-[1px] bg-[#C5A059]/40"></div>
 
@@ -96,23 +202,26 @@ export const DivoLogo: React.FC<DivoLogoProps> = ({
     );
   }
 
-  // Standard & Large Sizes (Slide 4 and 8)
+  // Standard & Large Sizes (md, lg, xl)
   const isLg = size === 'lg' || size === 'xl';
 
   return (
     <div className={`flex flex-col items-center select-none ${className}`}>
-      <div className="flex items-center justify-center gap-4 sm:gap-6">
-        {/* DIVO Box */}
-        <div className="flex flex-col items-center">
-          <h1 className={`font-montserrat font-black ${isLg ? 'text-4xl sm:text-5xl tracking-[0.18em]' : 'text-2xl sm:text-3xl tracking-[0.16em]'} ${textColor} leading-none`}>
-            DIVO
-          </h1>
-          <div className={`border-t border-b ${isLight ? 'border-black/60' : 'border-white/70'} w-full text-center py-0.5 sm:py-1 px-1 sm:px-2 mt-1 sm:mt-1.5`}>
-            <span className={`font-montserrat ${isLg ? 'text-[9px] sm:text-[11px]' : 'text-[7.5px] sm:text-[8.5px]'} tracking-[0.3em] ${textColor} font-semibold uppercase block`}>
-              TRAJES Y ETIQUETA
-            </span>
-          </div>
-        </div>
+      <div className="flex items-center justify-center gap-3 sm:gap-5">
+        {/* Official DIVO Trajes y Etiqueta Logo */}
+        <DivoOfficialMark
+          customLogo={customLogo}
+          isLight={isLight}
+          className={
+            size === 'xl'
+              ? 'h-16 sm:h-24'
+              : size === 'lg'
+              ? 'h-14 sm:h-20'
+              : 'h-11 sm:h-14'
+          }
+        />
+
+        <div className={`${isLg ? 'h-12 sm:h-16' : 'h-9 sm:h-11'} w-[1px] bg-[#C5A059]/40`}></div>
 
         {/* 20 Años in Gold Serif Italic */}
         <div className="flex items-baseline">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Calendar,
@@ -7,10 +7,11 @@ import {
   CheckCircle2,
   XCircle,
   Users,
-  Utensils,
   Sparkles,
   MessageSquare,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ShieldCheck,
   Share2,
   Download,
@@ -19,6 +20,7 @@ import {
 import { Guest, RSVPStatus } from '../../types/guest';
 import { DivoLogo } from '../brand/DivoLogo';
 import { GuestService } from '../../services/guestService';
+import { InvitationCard } from '../invitation/InvitationCard';
 
 interface RSVPViewProps {
   guest: Guest;
@@ -31,21 +33,28 @@ export const RSVPView: React.FC<RSVPViewProps> = ({
   onUpdateSuccess,
   onGoToAdmin,
 }) => {
+  const [currentGuest, setCurrentGuest] = useState<Guest>(guest);
   const [status, setStatus] = useState<RSVPStatus>(guest.status);
   const [confirmedCompanions, setConfirmedCompanions] = useState<number>(
     guest.confirmedCompanions || (guest.companionsAllowed > 0 ? 1 : 0)
   );
   const [companionName, setCompanionName] = useState<string>(guest.companionName || '');
-  const [dietaryRestrictions, setDietaryRestrictions] = useState<string>(
-    guest.dietaryRestrictions || 'Sin restricciones'
-  );
-  const [customDietary, setCustomDietary] = useState<string>('');
   const [congratulationMessage, setCongratulationMessage] = useState<string>(
     guest.congratulationMessage || ''
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(guest.status !== 'pending');
+  const [showModifyForm, setShowModifyForm] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCurrentGuest(guest);
+    setStatus(guest.status);
+    setConfirmedCompanions(guest.confirmedCompanions || (guest.companionsAllowed > 0 ? 1 : 0));
+    setCompanionName(guest.companionName || '');
+    setCongratulationMessage(guest.congratulationMessage || '');
+    setHasSubmitted(guest.status !== 'pending');
+  }, [guest]);
 
   const triggerCelebration = () => {
     const end = Date.now() + 2.5 * 1000;
@@ -77,27 +86,29 @@ export const RSVPView: React.FC<RSVPViewProps> = ({
     setIsSubmitting(true);
     setErrorMsg(null);
     try {
-      const finalDietary =
-        dietaryRestrictions === 'Otro'
-          ? customDietary || 'Otro régimen especial'
-          : dietaryRestrictions;
-
       const updated = await GuestService.submitRSVP(guest.id, {
         status: chosenStatus,
         confirmedCompanions: chosenStatus === 'confirmed' ? confirmedCompanions : 0,
         companionName: chosenStatus === 'confirmed' && confirmedCompanions > 0 ? companionName : undefined,
-        dietaryRestrictions: chosenStatus === 'confirmed' ? finalDietary : undefined,
         congratulationMessage: congratulationMessage.trim() || undefined,
       });
 
+      setCurrentGuest(updated);
       setStatus(chosenStatus);
       setHasSubmitted(true);
+      setShowModifyForm(false);
       if (onUpdateSuccess) {
         onUpdateSuccess(updated);
       }
 
       if (chosenStatus === 'confirmed') {
         triggerCelebration();
+        setTimeout(() => {
+          const el = document.getElementById('invitation-card-section');
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth' });
+          }
+        }, 250);
       }
     } catch (err) {
       console.error('Error submitting RSVP', err);
@@ -114,7 +125,7 @@ export const RSVPView: React.FC<RSVPViewProps> = ({
     const endTime = '20261023T023000Z';
     const title = encodeURIComponent('DIVO 20 años — Vistiendo Momentos');
     const details = encodeURIComponent(
-      'Celebración Aniversario 20 Años DIVO Trajes y Etiqueta.\nShow en Vivo + Desfile Exclusivo.\nDress Code: Gala (prendas Divo).'
+      'Celebración Aniversario 20 Años DIVO Trajes y Etiqueta.\nShow en Vivo + Desfile Exclusivo.\nDress Code: Elegante.'
     );
     const location = encodeURIComponent('Capilla Paseo del Buen Pastor, Hipólito Yrigoyen 325, Córdoba, Argentina');
     const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startTime}/${endTime}&details=${details}&location=${location}`;
@@ -222,7 +233,7 @@ export const RSVPView: React.FC<RSVPViewProps> = ({
           <div className="p-3.5 bg-gradient-to-r from-[#181510] to-[#121212] border-l-2 border-[#C5A059] my-5 flex items-center justify-between gap-3">
             <div>
               <div className="font-montserrat text-[9px] tracking-widest text-[#C5A059] uppercase font-bold">
-                Dress Code: Gala (Prendas Divo)
+                Dress Code: Elegante
               </div>
               <div className="font-montserrat text-[11px] text-white/80 mt-0.5">
                 Aniversario + Show en Vivo + Desfile Exclusivo de Alta Costura
@@ -268,7 +279,7 @@ export const RSVPView: React.FC<RSVPViewProps> = ({
                 </div>
                 <div className="font-montserrat text-xs text-white/80 mt-1">
                   {status === 'confirmed'
-                    ? `Te esperamos el 22 de Octubre a las 19:00 hs. Pase registrado para ${1 + confirmedCompanions} persona(s).`
+                    ? `Te esperamos el 22 de Octubre a las 19:00 hs. Pase habilitado para ${1 + confirmedCompanions} persona(s) ${confirmedCompanions > 0 && companionName ? `(Titular + ${companionName})` : ''}.`
                     : 'Gracias por avisarnos. ¡Lamentamos no contar con tu presencia en esta ocasión!'}
                 </div>
                 {guest.respondedAt && (
@@ -280,147 +291,174 @@ export const RSVPView: React.FC<RSVPViewProps> = ({
             </div>
           )}
 
-          {/* RSVP Interactive Form */}
-          <div className="mt-6 pt-5 border-t border-white/10 text-left">
-            <h3 className="font-montserrat text-xs tracking-[0.2em] text-[#C5A059] uppercase font-bold mb-4">
-              {hasSubmitted ? 'Modificar o Actualizar Respuesta' : 'Confirma tu Asistencia'}
-            </h3>
-
-            {/* Companion Section if allowed */}
-            {guest.companionsAllowed > 0 && (
-              <div className="mb-5 p-3.5 bg-black/40 border border-white/10">
-                <label className="flex items-center justify-between text-xs font-montserrat font-medium text-white mb-2">
-                  <span className="flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-[#C5A059]" />
-                    ¿Vendrás con acompañante?
-                  </span>
-                  <span className="text-[10px] text-[#C5A059] font-mono">
-                    (Máx. {guest.companionsAllowed})
-                  </span>
-                </label>
-
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 text-xs font-montserrat cursor-pointer">
-                    <input
-                      type="radio"
-                      name="companions"
-                      checked={confirmedCompanions === 0}
-                      onChange={() => setConfirmedCompanions(0)}
-                      className="accent-[#C5A059]"
-                    />
-                    <span>Asistiré solo/a</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-xs font-montserrat cursor-pointer">
-                    <input
-                      type="radio"
-                      name="companions"
-                      checked={confirmedCompanions === 1}
-                      onChange={() => setConfirmedCompanions(1)}
-                      className="accent-[#C5A059]"
-                    />
-                    <span>Asistiré con 1 acompañante</span>
-                  </label>
+          {/* DEDICATED INVITATION CARD & QR DOWNLOAD SECTION ON CONFIRMATION */}
+          {status === 'confirmed' && (
+            <div id="invitation-card-section" className="my-6 pt-5 border-t border-[#C5A059]/40 text-center">
+              <div className="bg-gradient-to-b from-[#19150f] via-[#101010] to-[#0c0c0c] border-2 border-[#C5A059] p-4 sm:p-6 shadow-2xl rounded-sm">
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#C5A059]/20 border border-[#C5A059]/60 text-[#E7CF98] text-[10px] font-montserrat uppercase tracking-widest font-bold mb-2">
+                  <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
+                  <span>Pase Digital Oficial</span>
                 </div>
 
-                {confirmedCompanions > 0 && (
-                  <div className="mt-3 pt-3 border-t border-white/10">
-                    <label className="block text-[11px] font-montserrat text-white/70 mb-1">
-                      Nombre y Apellido del Acompañante:
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: Laura Gómez"
-                      value={companionName}
-                      onChange={(e) => setCompanionName(e.target.value)}
-                      className="w-full bg-[#181818] border border-white/20 px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#C5A059]"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
+                <h3 className="font-montserrat text-base sm:text-xl font-bold text-white tracking-wide">
+                  Descarga tu Invitación con QR
+                </h3>
 
-            {/* Dietary restrictions */}
-            <div className="mb-5">
-              <label className="flex items-center gap-1.5 text-xs font-montserrat font-medium text-white mb-2">
-                <Utensils className="w-3.5 h-3.5 text-[#C5A059]" />
-                Preferencia o restricción alimentaria:
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {['Sin restricciones', 'Vegetariano', 'Celíaco (Sin TACC)', 'Otro'].map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setDietaryRestrictions(option)}
-                    className={`py-2 px-2.5 text-[11px] font-montserrat text-center border transition-all ${
-                      dietaryRestrictions === option
-                        ? 'bg-[#C5A059] text-black font-semibold border-[#C5A059]'
-                        : 'bg-[#181818] text-white/80 border-white/10 hover:border-white/30'
-                    }`}
+                <p className="font-montserrat text-xs text-white/80 mt-1.5 max-w-md mx-auto leading-relaxed">
+                  Guarda la tarjeta en las fotos de tu teléfono o descárgala en PDF. Deberás presentar el código QR en el ingreso de la Capilla Buen Pastor.
+                </p>
+
+                {/* The Luxury Printable/Exportable Invitation Card */}
+                <div className="mt-5 flex justify-center">
+                  <InvitationCard guest={currentGuest} showActions={true} />
+                </div>
+
+                {/* Direct Link to Live Photo Wall */}
+                <div className="mt-6 pt-5 border-t border-[#C5A059]/30 text-center">
+                  <span className="font-montserrat text-[10px] tracking-widest text-[#C5A059] uppercase font-bold block mb-1">
+                    MURO EN VIVO • PANTALLA GIGANTE
+                  </span>
+                  <p className="font-montserrat text-xs text-white/70 mb-3">
+                    ¿Ya estás en el evento o querés dejar una dedicatoria? Subí tu foto para que salga en tiempo real en la pantalla.
+                  </p>
+                  <a
+                    href="?muro=true&slug=divo20"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C5A059] to-[#E7CF98] hover:from-[#E7CF98] hover:to-[#C5A059] text-black font-montserrat text-xs font-bold uppercase tracking-wider shadow-lg transition-transform active:scale-95"
                   >
-                    {option}
-                  </button>
-                ))}
+                    <span>📷 Subir foto al Muro en Vivo</span>
+                    <span>→</span>
+                  </a>
+                </div>
               </div>
-
-              {dietaryRestrictions === 'Otro' && (
-                <input
-                  type="text"
-                  placeholder="Por favor indícanos tu requerimiento (vegano, intolerancias, etc.)"
-                  value={customDietary}
-                  onChange={(e) => setCustomDietary(e.target.value)}
-                  className="w-full mt-2 bg-[#181818] border border-white/20 px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#C5A059]"
-                />
-              )}
             </div>
+          )}
 
-            {/* Congratulatory note */}
-            <div className="mb-6">
-              <label className="flex items-center gap-1.5 text-xs font-montserrat font-medium text-white mb-2">
-                <MessageSquare className="w-3.5 h-3.5 text-[#C5A059]" />
-                Mensaje de felicitación para DIVO en sus 20 años (opcional):
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Dedícale unas palabras a Pablo y al equipo de Divo Trajes..."
-                value={congratulationMessage}
-                onChange={(e) => setCongratulationMessage(e.target.value)}
-                className="w-full bg-[#181818] border border-white/20 px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#C5A059] resize-none"
-              />
-            </div>
-
-            {errorMsg && (
-              <div className="p-3 mb-4 bg-rose-950/50 border border-rose-500/50 text-rose-200 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>{errorMsg}</span>
-              </div>
-            )}
-
-            {/* Decision Action Buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              {/* Confirmo mi Asistencia */}
+          {/* Toggle button to modify response if confirmed */}
+          {status === 'confirmed' && (
+            <div className="mt-4 pt-2 text-center">
               <button
                 type="button"
-                disabled={isSubmitting}
-                onClick={() => handleConfirmSubmit('confirmed')}
-                className="w-full py-3.5 px-4 bg-gradient-to-r from-[#C5A059] to-[#8C6E38] hover:from-[#d4af37] hover:to-[#9c7b41] text-black font-montserrat text-xs tracking-wider uppercase font-bold shadow-lg transition-all transform active:scale-98 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                onClick={() => setShowModifyForm(!showModifyForm)}
+                className="text-xs font-montserrat text-[#C5A059]/80 hover:text-[#E7CF98] underline underline-offset-4 tracking-wider uppercase transition-colors cursor-pointer inline-flex items-center gap-1.5"
               >
-                <Sparkles className="w-4 h-4 text-black" />
                 <span>
-                  {isSubmitting ? 'Guardando...' : 'Confirmo mi asistencia'}
+                  {showModifyForm
+                    ? '▲ Ocultar formulario de modificación'
+                    : '▼ ¿Deseas modificar tus acompañantes o tu mensaje?'}
                 </span>
               </button>
-
-              {/* No podré asistir */}
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => handleConfirmSubmit('declined')}
-                className="w-full py-3.5 px-4 bg-transparent hover:bg-white/5 border border-white/20 text-[#FAF7F2]/70 hover:text-white font-montserrat text-xs tracking-wider uppercase transition-colors flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-              >
-                <span>No podré asistir</span>
-              </button>
             </div>
-          </div>
+          )}
+
+          {/* RSVP Interactive Form (Shown always when not confirmed, or toggled when confirmed) */}
+          {(!hasSubmitted || status !== 'confirmed' || showModifyForm) && (
+            <div className="mt-6 pt-5 border-t border-white/10 text-left">
+              <h3 className="font-montserrat text-xs tracking-[0.2em] text-[#C5A059] uppercase font-bold mb-4">
+                {hasSubmitted ? 'Modificar o Actualizar Respuesta' : 'Confirma tu Asistencia'}
+              </h3>
+
+              {/* Companion Section if allowed */}
+              {guest.companionsAllowed > 0 && (
+                <div className="mb-5 p-3.5 bg-black/40 border border-white/10">
+                  <label className="flex items-center justify-between text-xs font-montserrat font-medium text-white mb-2">
+                    <span className="flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-[#C5A059]" />
+                      ¿Vendrás con acompañante?
+                    </span>
+                    <span className="text-[10px] text-[#C5A059] font-mono">
+                      (Máx. {guest.companionsAllowed})
+                    </span>
+                  </label>
+
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-xs font-montserrat cursor-pointer">
+                      <input
+                        type="radio"
+                        name="companions"
+                        checked={confirmedCompanions === 0}
+                        onChange={() => setConfirmedCompanions(0)}
+                        className="accent-[#C5A059]"
+                      />
+                      <span>Asistiré solo/a</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-montserrat cursor-pointer">
+                      <input
+                        type="radio"
+                        name="companions"
+                        checked={confirmedCompanions === 1}
+                        onChange={() => setConfirmedCompanions(1)}
+                        className="accent-[#C5A059]"
+                      />
+                      <span>Asistiré con 1 acompañante</span>
+                    </label>
+                  </div>
+
+                  {confirmedCompanions > 0 && (
+                    <div className="mt-3 pt-3 border-t border-white/10">
+                      <label className="block text-[11px] font-montserrat text-white/70 mb-1">
+                        Nombre y Apellido del Acompañante:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej: Laura Gómez"
+                        value={companionName}
+                        onChange={(e) => setCompanionName(e.target.value)}
+                        className="w-full bg-[#181818] border border-white/20 px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#C5A059]"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Congratulatory note */}
+              <div className="mb-6">
+                <label className="flex items-center gap-1.5 text-xs font-montserrat font-medium text-white mb-2">
+                  <MessageSquare className="w-3.5 h-3.5 text-[#C5A059]" />
+                  Mensaje de felicitación para DIVO en sus 20 años (opcional):
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Dedícale unas palabras a Pablo y al equipo de Divo Trajes..."
+                  value={congratulationMessage}
+                  onChange={(e) => setCongratulationMessage(e.target.value)}
+                  className="w-full bg-[#181818] border border-white/20 px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#C5A059] resize-none"
+                />
+              </div>
+
+              {errorMsg && (
+                <div className="p-3 mb-4 bg-rose-950/50 border border-rose-500/50 text-rose-200 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+
+              {/* Decision Action Buttons */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                {/* Confirmo mi Asistencia */}
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => handleConfirmSubmit('confirmed')}
+                  className="w-full py-3.5 px-4 bg-gradient-to-r from-[#C5A059] to-[#8C6E38] hover:from-[#d4af37] hover:to-[#9c7b41] text-black font-montserrat text-xs tracking-wider uppercase font-bold shadow-lg transition-all transform active:scale-98 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4 text-black" />
+                  <span>
+                    {isSubmitting ? 'Guardando...' : 'Confirmo mi asistencia'}
+                  </span>
+                </button>
+
+                {/* No podré asistir */}
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => handleConfirmSubmit('declined')}
+                  className="w-full py-3.5 px-4 bg-transparent hover:bg-white/5 border border-white/20 text-[#FAF7F2]/70 hover:text-white font-montserrat text-xs tracking-wider uppercase transition-colors flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  <span>No podré asistir</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Security & Access Instructions note */}

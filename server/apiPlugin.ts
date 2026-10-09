@@ -109,8 +109,70 @@ export function divoApiPlugin(): Plugin {
 
         // GET /api/guests
         if (url === '/api/guests' && req.method === 'GET') {
+          guests = ensureDataFile();
           res.writeHead(200);
           res.end(JSON.stringify(guests));
+          return;
+        }
+
+        // POST /api/guests/bulk (Bulk import from Excel / CSV)
+        if (url === '/api/guests/bulk' && req.method === 'POST') {
+          parseBody((body) => {
+            const incoming: Guest[] = Array.isArray(body) ? body : (body.guests || []);
+            guests = ensureDataFile();
+            const existingMap = new Map(guests.map((g) => [g.id.toLowerCase(), g]));
+            const added: Guest[] = [];
+            for (const item of incoming) {
+              if (item && item.id) {
+                const key = item.id.toLowerCase();
+                if (!existingMap.has(key)) {
+                  added.push(item);
+                  existingMap.set(key, item);
+                } else {
+                  const idx = guests.findIndex((g) => g.id.toLowerCase() === key);
+                  if (idx !== -1) {
+                    guests[idx] = { ...guests[idx], ...item };
+                  }
+                }
+              }
+            }
+            guests = [...added, ...guests];
+            saveDataFile(guests);
+            broadcast({ type: 'SYNC_ALL', guests });
+            res.writeHead(201);
+            res.end(JSON.stringify({ success: true, added: added.length, guests }));
+          });
+          return;
+        }
+
+        // POST /api/guests/sync (Synchronize local clients with server storage)
+        if (url === '/api/guests/sync' && req.method === 'POST') {
+          parseBody((body) => {
+            const incoming: Guest[] = Array.isArray(body) ? body : (body.guests || []);
+            guests = ensureDataFile();
+            const existingById = new Map(guests.map((g) => [g.id.toLowerCase(), g]));
+            const existingByToken = new Map(guests.map((g) => [g.token.toLowerCase(), g]));
+            const newItems: Guest[] = [];
+
+            for (const item of incoming) {
+              if (item && item.id && item.token) {
+                const idKey = item.id.toLowerCase();
+                const tokenKey = item.token.toLowerCase();
+                if (!existingById.has(idKey) && !existingByToken.has(tokenKey)) {
+                  newItems.push(item);
+                  existingById.set(idKey, item);
+                  existingByToken.set(tokenKey, item);
+                }
+              }
+            }
+            if (newItems.length > 0) {
+              guests = [...newItems, ...guests];
+              saveDataFile(guests);
+              broadcast({ type: 'SYNC_ALL', guests });
+            }
+            res.writeHead(200);
+            res.end(JSON.stringify(guests));
+          });
           return;
         }
 
@@ -118,6 +180,7 @@ export function divoApiPlugin(): Plugin {
         if (url === '/api/guests' && req.method === 'POST') {
           parseBody((body) => {
             const newGuest: Guest = body;
+            guests = ensureDataFile();
             guests = [newGuest, ...guests.filter((g) => g.id !== newGuest.id)];
             saveDataFile(guests);
             broadcast({ type: 'GUEST_ADDED', guest: newGuest, guests });
@@ -140,11 +203,14 @@ export function divoApiPlugin(): Plugin {
         // Match /api/guests/:id
         const guestIdMatch = url.match(/^\/api\/guests\/([^/?]+)(?:\/([^/?]+))?$/);
         if (guestIdMatch) {
-          const guestId = guestIdMatch[1];
+          const guestId = decodeURIComponent(guestIdMatch[1]);
           const subAction = guestIdMatch[2]; // e.g. 'rsvp', 'checkin', 'undo-checkin'
 
+          guests = ensureDataFile();
           const guestIndex = guests.findIndex(
-            (g) => g.id.toLowerCase() === guestId.toLowerCase() || g.token.toLowerCase() === guestId.toLowerCase()
+            (g) =>
+              g.id.toLowerCase() === guestId.toLowerCase() ||
+              g.token.toLowerCase() === guestId.toLowerCase()
           );
 
           if (guestIndex === -1) {
@@ -154,6 +220,13 @@ export function divoApiPlugin(): Plugin {
           }
 
           const targetGuest = guests[guestIndex];
+
+          // GET /api/guests/:id
+          if (!subAction && req.method === 'GET') {
+            res.writeHead(200);
+            res.end(JSON.stringify(targetGuest));
+            return;
+          }
 
           // PUT /api/guests/:id
           if (!subAction && req.method === 'PUT') {

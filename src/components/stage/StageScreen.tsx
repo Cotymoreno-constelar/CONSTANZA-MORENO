@@ -141,7 +141,7 @@ export const StageScreen: React.FC = () => {
               <div>📅 22 DE OCTUBRE DE 2026</div>
               <div>⏰ 19:00 HS</div>
               <div>📍 CAPILLA BUEN PASTOR, CÓRDOBA</div>
-              <div>👔 GALA (PRENDAS DIVO)</div>
+              <div>👔 ELEGANTE</div>
             </div>
           </div>
         </div>

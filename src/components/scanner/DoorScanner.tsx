@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import jsQR from 'jsqr';
+import QRCode from 'qrcode';
 import {
   Camera,
   CheckCircle2,
@@ -20,7 +21,12 @@ import {
   KeyRound,
   ExternalLink,
   Zap,
-  Power
+  Power,
+  Eye,
+  Check,
+  QrCode,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { Guest } from '../../types/guest';
 import { GuestService, calculateStats } from '../../services/guestService';
@@ -37,33 +43,45 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [cameraPermissionState, setCameraPermissionState] = useState<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt');
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [torchAvailable, setTorchAvailable] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
+  const [isSuccessFlashing, setIsSuccessFlashing] = useState(false);
 
-  // Active scan result state
+  // Active scan result modal state
   const [scannedGuest, setScannedGuest] = useState<Guest | null>(null);
   const [scanResultType, setScanResultType] = useState<'valid' | 'already-entered' | 'not-confirmed' | 'not-found' | null>(null);
   const [alreadyCheckedInTime, setAlreadyCheckedInTime] = useState<string | null>(null);
   const [isSubmittingCheckIn, setIsSubmittingCheckIn] = useState(false);
   const [staffName, setStaffName] = useState('Acceso Principal - Capilla Buen Pastor');
 
-  // Modes: live camera, take photo / upload file, manual code, guest search list
+  // Input modes: live camera, take photo / file upload, manual code, search padrón
   const [activeMode, setActiveMode] = useState<'camera' | 'photo' | 'code' | 'search'>('camera');
   const [quickCodeInput, setQuickCodeInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isFileAnalyzing, setIsFileAnalyzing] = useState(false);
   const [fileScanError, setFileScanError] = useState<string | null>(null);
 
+  // Test QR Modal for easy testing between devices or screens
+  const [showTestQrModal, setShowTestQrModal] = useState(false);
+  const [sampleQrDataUrl, setSampleQrDataUrl] = useState<string>('');
+  const [selectedSampleGuest, setSelectedSampleGuest] = useState<Guest | null>(null);
+
   // Detect if running inside iframe
   const [isEmbeddedIframe, setIsEmbeddedIframe] = useState(false);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const animationFrameId = useRef<number | null>(null);
+  const scanIntervalRef = useRef<any>(null);
+  const isScanningFrame = useRef(false);
+  const lastScanTimestamp = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const nativeDetectorRef = useRef<any>(null);
 
   const stats = calculateStats(guests);
 
@@ -73,9 +91,36 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
     } catch {
       setIsEmbeddedIframe(true);
     }
-  }, []);
 
-  // Web Audio Synth for crisp sound cues
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Initialize native BarcodeDetector if supported by browser
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      try {
+        nativeDetectorRef.current = new (window as any).BarcodeDetector({
+          formats: ['qr_code'],
+        });
+        console.log('Native BarcodeDetector initialized successfully');
+      } catch (e) {
+        console.warn('Native BarcodeDetector not available, using jsQR fallback', e);
+      }
+    }
+
+    // Prepare sample QR for the test modal
+    const sample = guests.find((g) => g.status === 'confirmed' && !g.checkedIn) || guests[0];
+    if (sample) {
+      setSelectedSampleGuest(sample);
+      const payload = GuestService.getQRPayload(sample);
+      QRCode.toDataURL(payload, { width: 320, margin: 2 })
+        .then((data) => setSampleQrDataUrl(data))
+        .catch(() => {});
+    }
+  }, [guests]);
+
+  // Audio cue synth
   const playSound = (type: 'success' | 'alert' | 'error') => {
     if (!soundEnabled) return;
     try {
@@ -95,67 +140,91 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
       gain.connect(ctx.destination);
 
       if (type === 'success') {
+        // Luxury celebration major chord
         const now = ctx.currentTime;
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(523.25, now);
-        osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.08);
-        osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.16);
+        osc.frequency.setValueAtTime(523.25, now); // C5
+        osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.08); // E5
+        osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.16); // G5
         gain.gain.setValueAtTime(0.3, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
         osc.start(now);
-        osc.stop(now + 0.36);
+        osc.stop(now + 0.39);
       } else if (type === 'alert') {
+        // Duplicate entry alert tone
         const now = ctx.currentTime;
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(260, now);
         gain.gain.setValueAtTime(0.4, now);
         gain.gain.setValueAtTime(0.01, now + 0.12);
         gain.gain.setValueAtTime(0.4, now + 0.15);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
         osc.start(now);
-        osc.stop(now + 0.31);
+        osc.stop(now + 0.33);
       } else {
+        // Error tone
         const now = ctx.currentTime;
         osc.type = 'square';
-        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.setValueAtTime(160, now);
         gain.gain.setValueAtTime(0.3, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
         osc.start(now);
         osc.stop(now + 0.26);
       }
     } catch {
-      // Audio not supported or blocked
+      // Audio not supported
     }
   };
 
-  // Stop video stream and scan loop
+  // Safe stop camera stream and scanning loop
   const stopCameraStream = () => {
-    if (animationFrameId.current) {
-      cancelAnimationFrame(animationFrameId.current);
-      animationFrameId.current = null;
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {}
+      });
       streamRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
     setIsCameraActive(false);
+    setTorchAvailable(false);
+    setTorchOn(false);
   };
 
-  // Start video stream
+  // Toggle mobile torch/flashlight if supported
+  const toggleTorch = async () => {
+    if (!streamRef.current) return;
+    const track = streamRef.current.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const nextState = !torchOn;
+      await (track as any).applyConstraints({
+        advanced: [{ torch: nextState }],
+      });
+      setTorchOn(nextState);
+    } catch (err) {
+      console.warn('Torch not supported on this track', err);
+    }
+  };
+
+  // Start video stream with robust fallbacks
   const startCameraStream = async (requestedFacing?: 'environment' | 'user') => {
     stopCameraStream();
     setIsInitializing(true);
     setCameraError(null);
 
-    const mode = requestedFacing || facingMode;
+    const targetFacing = requestedFacing || facingMode;
 
     if (!navigator?.mediaDevices?.getUserMedia) {
-      setCameraPermissionState('unsupported');
       setCameraError(
-        'Este navegador o visor no permite acceso directo a la cámara por video stream. Utiliza la opción "Tomar Foto / Archivo" o "Ingreso por Código".'
+        'Este navegador no permite acceso directo a la cámara. Por favor utiliza la opción "Tomar Foto / QR" o "Por Código".'
       );
       setIsInitializing(false);
       return;
@@ -164,19 +233,19 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
     try {
       let stream: MediaStream | null = null;
 
-      // Strategy 1: Try requested facing mode (ideal)
+      // 1. Try back/environment camera with optimal resolution
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode: { ideal: mode },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            facingMode: { ideal: targetFacing },
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 },
           },
           audio: false,
         });
       } catch (err1) {
-        console.warn('Strategy 1 failed, trying fallback to any video...', err1);
-        // Strategy 2: Fallback to basic video without constraints (e.g. laptop webcam)
+        console.warn('Ideal facing mode failed, trying basic video constraints...', err1);
+        // 2. Fallback to any available video (e.g. laptop webcam)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: true,
@@ -193,25 +262,39 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
 
       streamRef.current = stream;
 
+      // Check if torch/flashlight is supported
+      const track = stream.getVideoTracks()[0];
+      if (track && (track.getCapabilities as any)) {
+        try {
+          const caps = (track.getCapabilities as any)();
+          if (caps && 'torch' in caps) {
+            setTorchAvailable(true);
+          }
+        } catch {}
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.setAttribute('playsinline', 'true');
-        await videoRef.current.play();
+        videoRef.current.setAttribute('muted', 'true');
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          console.warn('Auto play was interrupted', playErr);
+        }
       }
 
       setIsCameraActive(true);
-      setCameraPermissionState('granted');
       setCameraError(null);
 
-      // Start scanning loop
-      requestScanFrame();
+      // Start continuous scanning loop (every 90ms for fluid responsiveness & low CPU)
+      startContinuousScanner();
     } catch (err: any) {
       console.error('Camera access error:', err);
-      setCameraPermissionState('denied');
       let msg = 'No se pudo acceder a la cámara.';
 
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        msg = 'Permiso denegado por el navegador o restringido en el visor actual.';
+        msg = 'Permiso denegado por el navegador. Haz clic en el candado de la barra de direcciones para permitir la cámara.';
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
         msg = 'No se encontró ninguna cámara conectada en este dispositivo.';
       } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
@@ -225,48 +308,111 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
     }
   };
 
-  // Continuous frame analysis
-  const requestScanFrame = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+  // High-performance QR scanning loop (Dual Engine: Native BarcodeDetector + Optimized Downscaled jsQR)
+  const startContinuousScanner = () => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+    }
 
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    // Run every 90ms (approx 11 checks per second, ideal for QR without lag)
+    scanIntervalRef.current = setInterval(async () => {
+      if (isScanningFrame.current) return;
+      if (!videoRef.current || !canvasRef.current) return;
 
-    const tick = () => {
-      if (video.readyState === video.HAVE_ENOUGH_DATA && ctx) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: 'dontInvert',
-        });
-
-        if (code && code.data) {
-          handleQrCodeDecoded(code.data);
-          // Pause brief moment to avoid rapid multiple triggers
-          setTimeout(() => {
-            animationFrameId.current = requestAnimationFrame(tick);
-          }, 1200);
-          return;
-        }
+      const video = videoRef.current;
+      if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+        return;
       }
 
-      animationFrameId.current = requestAnimationFrame(tick);
-    };
+      // Throttle rapid duplicate scans
+      const now = Date.now();
+      if (now - lastScanTimestamp.current < 1200) {
+        return;
+      }
 
-    animationFrameId.current = requestAnimationFrame(tick);
+      isScanningFrame.current = true;
+
+      try {
+        let detectedText: string | null = null;
+
+        // ENGINE 1: Hardware-accelerated Native BarcodeDetector (iOS 17+, Android Chrome)
+        if (nativeDetectorRef.current) {
+          try {
+            const barcodes = await nativeDetectorRef.current.detect(video);
+            if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+              detectedText = barcodes[0].rawValue;
+            }
+          } catch (e) {
+            // fallback to jsQR
+          }
+        }
+
+        // ENGINE 2: Optimized jsQR on scaled-down buffer
+        if (!detectedText) {
+          const canvas = canvasRef.current;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+          if (ctx) {
+            // Downscale to ~480px width for 10x faster decoding and zero dropped frames
+            const maxDimension = 540;
+            let targetWidth = video.videoWidth;
+            let targetHeight = video.videoHeight;
+
+            if (targetWidth > maxDimension || targetHeight > maxDimension) {
+              const ratio = Math.min(maxDimension / targetWidth, maxDimension / targetHeight);
+              targetWidth = Math.round(targetWidth * ratio);
+              targetHeight = Math.round(targetHeight * ratio);
+            }
+
+            if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+              canvas.width = targetWidth;
+              canvas.height = targetHeight;
+            }
+
+            ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+            const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+
+            const code = jsQR(imageData.data, targetWidth, targetHeight, {
+              inversionAttempts: 'attemptBoth',
+            });
+
+            if (code && code.data) {
+              detectedText = code.data;
+            }
+          }
+        }
+
+        // Process found QR code
+        if (detectedText) {
+          lastScanTimestamp.current = Date.now();
+          setLastScannedCode(detectedText);
+          setIsSuccessFlashing(true);
+          setTimeout(() => setIsSuccessFlashing(false), 800);
+
+          if (navigator.vibrate) {
+            try {
+              navigator.vibrate([80, 40, 80]);
+            } catch {}
+          }
+
+          handleQrCodeDecoded(detectedText);
+        }
+      } catch (err) {
+        console.warn('Scanner frame evaluation error:', err);
+      } finally {
+        isScanningFrame.current = false;
+      }
+    }, 90);
   };
 
-  // Cleanup on unmount or mode switch
+  // Clean up on unmount
   useEffect(() => {
     return () => {
       stopCameraStream();
     };
   }, []);
 
+  // Switch camera facing mode
   const toggleCameraFacing = async () => {
     const next = facingMode === 'environment' ? 'user' : 'environment';
     setFacingMode(next);
@@ -275,36 +421,30 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
     }
   };
 
-  // Decode QR and identify guest
+  // Decode QR and identify guest (supports URLs, Official Pass Credentials, WhatsApp links, and cross-device hydration)
   const handleQrCodeDecoded = (decodedText: string) => {
-    let targetToken = decodedText.trim();
-    try {
-      if (decodedText.includes('guest=')) {
-        const url = new URL(decodedText);
-        const param = url.searchParams.get('guest');
-        if (param) targetToken = param;
-      } else if (decodedText.startsWith('http://') || decodedText.startsWith('https://')) {
-        const parts = decodedText.split('/');
-        targetToken = parts[parts.length - 1];
-      }
-    } catch {
-      // fallback
-    }
-
-    processGuestInspection(targetToken);
+    processGuestInspection(decodedText);
   };
 
-  // Inspect guest by token, ID or full name
-  const processGuestInspection = (tokenOrId: string) => {
-    const cleanQuery = tokenOrId.trim().toLowerCase();
-    if (!cleanQuery) return;
+  // Inspect guest by QR payload, URL, token, ID, or full name
+  const processGuestInspection = async (rawInput: string) => {
+    const trimmed = (rawInput || '').trim();
+    if (!trimmed) return;
 
-    const match = guests.find(
-      (g) =>
-        g.token.toLowerCase() === cleanQuery ||
-        g.id.toLowerCase() === cleanQuery ||
-        `${g.firstName} ${g.lastName}`.toLowerCase() === cleanQuery
-    );
+    // 1. Universal resolution + self-hydration if scanned from another device
+    const resolved = GuestService.resolveGuestFromQRText(trimmed, guests);
+    let match = resolved.guest;
+
+    // 2. If not in local list yet, query server directly before showing any error
+    if (!match && resolved.tokenOrQuery) {
+      const remoteGuest = await GuestService.getGuestByIdOrToken(resolved.tokenOrQuery);
+      if (remoteGuest) {
+        match = remoteGuest;
+        if (onGuestUpdated) {
+          onGuestUpdated(remoteGuest);
+        }
+      }
+    }
 
     if (!match) {
       setScanResultType('not-found');
@@ -313,13 +453,18 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
       return;
     }
 
+    // Notify parent if guest was newly hydrated from QR
+    if (!guests.some((g) => g.id === match!.id) && onGuestUpdated) {
+      onGuestUpdated(match);
+    }
+
     setScannedGuest(match);
 
     if (match.checkedIn) {
       setScanResultType('already-entered');
       setAlreadyCheckedInTime(match.checkedInAt || null);
       playSound('alert');
-    } else if (match.status !== 'confirmed') {
+    } else if (match.status === 'declined') {
       setScanResultType('not-confirmed');
       playSound('alert');
     } else {
@@ -328,7 +473,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
     }
   };
 
-  // Process uploaded image file or camera capture
+  // Process uploaded image file or photo capture (supports both standalone QR and full 760x1280 Invitation Card)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -339,24 +484,65 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         try {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            throw new Error('No se pudo inicializar canvas para decodificar.');
-          }
-          ctx.drawImage(img, 0, 0);
-          const imageData = ctx.getImageData(0, 0, img.width, img.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          let foundText: string | null = null;
 
-          if (code && code.data) {
-            handleQrCodeDecoded(code.data);
+          // 1. Try native detector if available
+          if (nativeDetectorRef.current) {
+            try {
+              const barcodes = await nativeDetectorRef.current.detect(img);
+              if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                foundText = barcodes[0].rawValue;
+              }
+            } catch {}
+          }
+
+          // Helper to scan a specific region/scale on canvas with jsQR
+          const scanRegion = (
+            sx: number,
+            sy: number,
+            sw: number,
+            sh: number,
+            targetSize: number = 700
+          ): string | null => {
+            const canvas = document.createElement('canvas');
+            const scale = Math.min(targetSize / sw, targetSize / sh, 2.5);
+            const dw = Math.max(120, Math.round(sw * scale));
+            const dh = Math.max(120, Math.round(sh * scale));
+            canvas.width = dw;
+            canvas.height = dh;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return null;
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+            const imageData = ctx.getImageData(0, 0, dw, dh);
+            const code = jsQR(imageData.data, dw, dh, {
+              inversionAttempts: 'attemptBoth',
+            });
+            return code && code.data ? code.data : null;
+          };
+
+          const W = img.width;
+          const H = img.height;
+
+          // 2. Multi-pass jsQR (Full image, then bottom-right QR region of Invitation Card, then bottom half, then center)
+          if (!foundText) {
+            foundText =
+              scanRegion(0, 0, W, H, 900) ||
+              scanRegion(0, 0, W, H, 550) ||
+              scanRegion(Math.floor(W * 0.45), Math.floor(H * 0.55), Math.floor(W * 0.55), Math.floor(H * 0.45), 600) ||
+              scanRegion(0, Math.floor(H * 0.5), W, Math.floor(H * 0.5), 750) ||
+              scanRegion(Math.floor(W * 0.15), Math.floor(H * 0.15), Math.floor(W * 0.7), Math.floor(H * 0.7), 650);
+          }
+
+          if (foundText) {
+            handleQrCodeDecoded(foundText);
             setFileScanError(null);
           } else {
-            setFileScanError('No se encontró un código QR legible en esta foto. Intenta enfocar más de cerca o usa el código manual.');
+            setFileScanError(
+              'No se encontró un código QR legible en esta foto. Asegúrate de enfocar bien el QR o ingresa el código manual.'
+            );
             playSound('error');
           }
         } catch (err: any) {
@@ -423,6 +609,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
     setScannedGuest(null);
     setScanResultType(null);
     setAlreadyCheckedInTime(null);
+    setLastScannedCode(null);
   };
 
   const filteredSearchGuests = searchQuery.trim()
@@ -436,7 +623,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
     <div className="w-full max-w-4xl mx-auto px-4 py-4 text-[#FAF7F2]">
       {/* Live Entrance Stats Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-5">
-        <div className="bg-[#141414] border border-[#C5A059]/30 p-3 text-center">
+        <div className="bg-[#141414] border border-[#C5A059]/30 p-3 text-center rounded-sm">
           <div className="text-[9px] font-montserrat tracking-widest text-[#C5A059] uppercase font-semibold">
             Ingresados en Sala
           </div>
@@ -448,7 +635,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
           </div>
         </div>
 
-        <div className="bg-[#141414] border border-emerald-500/30 p-3 text-center">
+        <div className="bg-[#141414] border border-emerald-500/30 p-3 text-center rounded-sm">
           <div className="text-[9px] font-montserrat tracking-widest text-emerald-400 uppercase font-semibold">
             Confirmados
           </div>
@@ -460,7 +647,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
           </div>
         </div>
 
-        <div className="bg-[#141414] border border-amber-500/30 p-3 text-center">
+        <div className="bg-[#141414] border border-amber-500/30 p-3 text-center rounded-sm">
           <div className="text-[9px] font-montserrat tracking-widest text-amber-400 uppercase font-semibold">
             Pendientes
           </div>
@@ -472,7 +659,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
           </div>
         </div>
 
-        <div className="bg-[#141414] border border-white/10 p-3 text-center">
+        <div className="bg-[#141414] border border-white/10 p-3 text-center rounded-sm">
           <div className="text-[9px] font-montserrat tracking-widest text-neutral-400 uppercase font-semibold">
             Total Padrón
           </div>
@@ -494,6 +681,26 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
             <span className="font-montserrat text-xs tracking-wider text-white font-bold uppercase">
               Control de Acceso en Puerta
             </span>
+            <div
+              className={`px-2 py-0.5 rounded-full text-[9px] font-mono flex items-center gap-1 ${
+                isOnline
+                  ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300'
+                  : 'bg-amber-950/80 border border-amber-500/60 text-amber-300 animate-pulse'
+              }`}
+              title={isOnline ? 'Conectado a la red' : 'Modo Offline blindado: Los escaneos se guardan en el dispositivo'}
+            >
+              {isOnline ? (
+                <>
+                  <Wifi className="w-3 h-3 text-emerald-400" />
+                  <span className="hidden sm:inline">Online</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-3 h-3 text-amber-400" />
+                  <span>Modo Offline Activo</span>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -521,7 +728,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
               <span>Cámara en Vivo</span>
             </button>
 
-            {/* TAB: Tomar Foto / Subir Archivo QR */}
+            {/* TAB: Tomar Foto / QR */}
             <button
               onClick={() => {
                 stopCameraStream();
@@ -535,10 +742,10 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
               }`}
             >
               <Upload className="w-3 h-3" />
-              <span>Tomar Foto / QR</span>
+              <span>Foto / Archivo QR</span>
             </button>
 
-            {/* TAB: Código Directo */}
+            {/* TAB: Por Código */}
             <button
               onClick={() => {
                 stopCameraStream();
@@ -554,7 +761,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
               <span>Por Código</span>
             </button>
 
-            {/* TAB: Padrón / Buscar */}
+            {/* TAB: Buscar en Padrón */}
             <button
               onClick={() => {
                 stopCameraStream();
@@ -572,7 +779,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
           </div>
         </div>
 
-        {/* Hidden Camera File Input with mobile capture support */}
+        {/* Hidden Camera File Input */}
         <input
           ref={fileInputRef}
           type="file"
@@ -582,11 +789,11 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
           onChange={handleFileUpload}
         />
 
-        {/* Hidden Canvas for Live Video Frame Capture */}
+        {/* Hidden Offscreen Canvas for Frame Capture */}
         <canvas ref={canvasRef} className="hidden" />
 
-        {/* Central Viewport Area */}
-        <div className="relative bg-black min-h-[340px] flex flex-col items-center justify-center p-4">
+        {/* Viewport Area */}
+        <div className="relative bg-black min-h-[350px] flex flex-col items-center justify-center p-4">
           {/* MODE 1: LIVE VIDEO STREAM */}
           {activeMode === 'camera' && (
             <div className="w-full flex flex-col items-center">
@@ -599,31 +806,53 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                       className="px-2.5 py-1.5 bg-[#1a1a1a] hover:bg-[#252525] text-white border border-white/15 text-[10px] font-montserrat uppercase flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <RotateCcw className="w-3 h-3 text-[#C5A059]" />
-                      <span>{facingMode === 'environment' ? 'Cámara Frontal' : 'Cámara Trasera'}</span>
+                      <span>{facingMode === 'environment' ? 'Cambiar a Frontal' : 'Cambiar a Trasera'}</span>
                     </button>
+
+                    {torchAvailable && (
+                      <button
+                        onClick={toggleTorch}
+                        className={`px-2.5 py-1.5 border text-[10px] font-montserrat uppercase flex items-center gap-1.5 transition-colors cursor-pointer ${
+                          torchOn
+                            ? 'bg-[#C5A059] text-black border-[#C5A059] font-bold'
+                            : 'bg-[#1a1a1a] hover:bg-[#252525] text-white border-white/15'
+                        }`}
+                      >
+                        <Zap className="w-3 h-3" />
+                        <span>{torchOn ? 'Linterna ON' : 'Linterna'}</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={stopCameraStream}
                       className="px-2.5 py-1.5 bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-500/40 text-[10px] font-montserrat uppercase flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <Power className="w-3 h-3" />
-                      <span>Apagar Cámara</span>
+                      <span>Detener</span>
                     </button>
                   </>
                 ) : (
-                  <button
-                    onClick={() => startCameraStream()}
-                    disabled={isInitializing}
-                    className="w-full py-2.5 px-4 bg-[#C5A059] hover:bg-[#d4af37] text-black font-montserrat text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg"
-                  >
-                    <Camera className="w-4 h-4" />
-                    <span>{isInitializing ? 'Iniciando Cámara...' : 'Encender Cámara en Vivo'}</span>
-                  </button>
+                  <div className="w-full flex flex-col gap-2">
+                    <button
+                      onClick={() => startCameraStream()}
+                      disabled={isInitializing}
+                      className="w-full py-3 px-4 bg-[#C5A059] hover:bg-[#d4af37] text-black font-montserrat text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg transition-all"
+                    >
+                      <Camera className="w-4 h-4" />
+                      <span>{isInitializing ? 'Conectando con cámara...' : 'Encender Cámara en Vivo'}</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
               {/* Viewport Box */}
-              <div className="relative w-[280px] sm:w-[320px] h-[280px] sm:h-[320px] bg-neutral-950 border-2 border-[#C5A059]/60 shadow-xl overflow-hidden rounded-sm flex items-center justify-center">
+              <div
+                className={`relative w-[280px] sm:w-[320px] h-[280px] sm:h-[320px] bg-neutral-950 border-2 overflow-hidden rounded-sm flex items-center justify-center transition-all duration-300 ${
+                  isSuccessFlashing
+                    ? 'border-emerald-400 shadow-[0_0_25px_rgba(52,211,153,0.8)]'
+                    : 'border-[#C5A059]/70 shadow-2xl'
+                }`}
+              >
                 {/* Live Video Element */}
                 <video
                   ref={videoRef}
@@ -638,17 +867,17 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                     <div className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-3 text-neutral-400">
                       <Camera className="w-7 h-7" />
                     </div>
-                    <span className="font-montserrat text-xs text-white/80 font-semibold mb-1">
-                      Cámara apagada
+                    <span className="font-montserrat text-xs text-white/90 font-semibold mb-1">
+                      Cámara en espera
                     </span>
                     <p className="text-[11px] text-white/50 max-w-[220px] mb-3 leading-relaxed">
-                      Haz clic abajo para iniciar la cámara o usa la opción "Tomar Foto / QR".
+                      Haz clic en "Encender Cámara" para comenzar el escaneo en vivo en la puerta.
                     </p>
                     <button
                       onClick={() => startCameraStream()}
-                      className="px-3 py-1.5 bg-[#C5A059] hover:bg-[#d4af37] text-black font-montserrat text-[10px] font-bold uppercase cursor-pointer"
+                      className="px-3.5 py-1.5 bg-[#C5A059] hover:bg-[#d4af37] text-black font-montserrat text-[10px] font-bold uppercase cursor-pointer"
                     >
-                      Activar Cámara
+                      Activar Cámara Ahora
                     </button>
                   </div>
                 )}
@@ -656,33 +885,39 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                 {isInitializing && (
                   <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center text-center p-4 z-30">
                     <RefreshCw className="w-8 h-8 text-[#C5A059] animate-spin mb-2" />
-                    <span className="font-montserrat text-xs text-white">Conectando con cámara...</span>
+                    <span className="font-montserrat text-xs text-white">Iniciando sensor de cámara...</span>
                   </div>
                 )}
 
-                {/* Laser scan line overlay */}
+                {/* Laser scan line overlay & luxury brackets */}
                 {isCameraActive && (
                   <>
                     <div className="absolute left-4 right-4 h-[2px] bg-gradient-to-r from-transparent via-[#C5A059] to-transparent scanner-laser pointer-events-none z-20 shadow-[0_0_8px_#C5A059]"></div>
-                    <div className="absolute top-2 left-2 w-6 h-6 border-t-2 border-l-2 border-[#C5A059] z-20 pointer-events-none"></div>
-                    <div className="absolute top-2 right-2 w-6 h-6 border-t-2 border-r-2 border-[#C5A059] z-20 pointer-events-none"></div>
-                    <div className="absolute bottom-2 left-2 w-6 h-6 border-b-2 border-l-2 border-[#C5A059] z-20 pointer-events-none"></div>
-                    <div className="absolute bottom-2 right-2 w-6 h-6 border-b-2 border-r-2 border-[#C5A059] z-20 pointer-events-none"></div>
+                    <div className="absolute top-3 left-3 w-6 h-6 border-t-2 border-l-2 border-[#C5A059] z-20 pointer-events-none"></div>
+                    <div className="absolute top-3 right-3 w-6 h-6 border-t-2 border-r-2 border-[#C5A059] z-20 pointer-events-none"></div>
+                    <div className="absolute bottom-3 left-3 w-6 h-6 border-b-2 border-l-2 border-[#C5A059] z-20 pointer-events-none"></div>
+                    <div className="absolute bottom-3 right-3 w-6 h-6 border-b-2 border-r-2 border-[#C5A059] z-20 pointer-events-none"></div>
+
+                    <div className="absolute bottom-2 left-0 right-0 text-center z-20 pointer-events-none">
+                      <span className="inline-block px-2 py-0.5 bg-black/70 backdrop-blur-sm border border-white/10 text-[9px] font-mono text-emerald-400 font-semibold tracking-wider uppercase">
+                        ● Escáner Activo
+                      </span>
+                    </div>
                   </>
                 )}
               </div>
 
               {isCameraActive && (
-                <div className="mt-3 text-center">
-                  <span className="font-montserrat text-[11px] text-white/60 tracking-wider">
+                <div className="mt-3 text-center flex items-center gap-2">
+                  <span className="font-montserrat text-[11px] text-white/70 tracking-wider">
                     Apunta la cámara al código QR de la tarjeta digital
                   </span>
                 </div>
               )}
 
-              {/* Camera Error or Iframe Diagnostic Banner */}
+              {/* Camera Error Banner */}
               {cameraError && (
-                <div className="mt-4 p-3.5 bg-rose-950/70 border border-rose-500 text-rose-200 text-xs max-w-md text-center rounded-sm">
+                <div className="mt-4 p-3.5 bg-rose-950/80 border border-rose-500 text-rose-200 text-xs max-w-md text-center rounded-sm">
                   <div className="font-bold flex items-center justify-center gap-1.5 mb-1 text-rose-300">
                     <AlertTriangle className="w-4 h-4 shrink-0" />
                     Acceso a Cámara no disponible en este entorno
@@ -695,13 +930,13 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                         setActiveMode('photo');
                         fileInputRef.current?.click();
                       }}
-                      className="px-3 py-1 bg-[#C5A059] hover:bg-[#d4af37] text-black font-montserrat text-[10px] font-bold uppercase transition-colors"
+                      className="px-3 py-1 bg-[#C5A059] hover:bg-[#d4af37] text-black font-montserrat text-[10px] font-bold uppercase transition-colors cursor-pointer"
                     >
                       📸 Tomar Foto del QR
                     </button>
                     <button
                       onClick={() => setActiveMode('code')}
-                      className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white font-montserrat text-[10px] uppercase transition-colors"
+                      className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white font-montserrat text-[10px] uppercase transition-colors cursor-pointer"
                     >
                       Validar por Código
                     </button>
@@ -722,7 +957,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
             </div>
           )}
 
-          {/* MODE 2: TOMAR FOTO O SUBIR QR (100% Mobile & Desktop friendly) */}
+          {/* MODE 2: TOMAR FOTO O SUBIR QR */}
           {activeMode === 'photo' && (
             <div className="w-full max-w-md my-auto py-6 text-center">
               <div
@@ -733,16 +968,16 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                   <FileImage className="w-7 h-7 text-[#C5A059]" />
                 </div>
                 <h4 className="font-montserrat text-sm font-bold text-white mb-1">
-                  Tomar foto con el celular o subir imagen del QR
+                  Tomar foto o subir imagen del QR
                 </h4>
                 <p className="text-xs text-white/50 max-w-xs mb-3">
-                  En celulares abre la cámara directamente. También puedes elegir una captura de pantalla enviada por WhatsApp.
+                  En teléfonos celulares abre la cámara de fotos directamente. También puedes elegir una foto guardada o captura de pantalla.
                 </p>
                 <button
                   type="button"
                   className="px-4 py-2 bg-[#C5A059] hover:bg-[#d4af37] text-black font-montserrat text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
                 >
-                  {isFileAnalyzing ? 'Decodificando QR...' : 'Abrir Cámara / Galería'}
+                  {isFileAnalyzing ? 'Decodificando código...' : 'Abrir Cámara de Fotos / Archivo'}
                 </button>
               </div>
 
@@ -759,10 +994,10 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
             <div className="w-full max-w-md my-auto py-6">
               <div className="bg-[#161616] border border-[#C5A059]/40 p-5 rounded-sm">
                 <label className="block font-montserrat text-xs tracking-wider text-[#C5A059] uppercase font-bold mb-2">
-                  Ingresar Código de Invitación
+                  Ingresar Token o Nombre del Invitado
                 </label>
                 <p className="text-[11px] text-white/60 mb-3">
-                  Escribe el token único que figura al pie del QR (ejemplo: <code className="text-[#E7CF98]">DIVO-4921</code>).
+                  Escribe el token único de la tarjeta (ej: <code className="text-[#E7CF98]">tk-pablo-honor-01</code>) o el nombre del invitado.
                 </p>
                 <div className="flex gap-2">
                   <input
@@ -774,9 +1009,9 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                         processGuestInspection(quickCodeInput);
                       }
                     }}
-                    placeholder="Ej: DIVO-4921"
+                    placeholder="Ej: tk-pablo-honor-01 o Pablo Moreno"
                     autoFocus
-                    className="flex-1 bg-black border border-white/20 px-3 py-2 text-sm font-mono text-white placeholder-white/30 uppercase focus:outline-none focus:border-[#C5A059]"
+                    className="flex-1 bg-black border border-white/20 px-3 py-2 text-sm font-mono text-white placeholder-white/30 focus:outline-none focus:border-[#C5A059]"
                   />
                   <button
                     onClick={() => processGuestInspection(quickCodeInput)}
@@ -807,7 +1042,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
               <div className="max-h-60 overflow-y-auto space-y-1.5">
                 {searchQuery.trim() === '' ? (
                   <p className="text-center text-xs text-white/40 py-6">
-                    Escribe el nombre del invitado para validar su ingreso.
+                    Escribe el nombre del invitado para validar su ingreso manualmente.
                   </p>
                 ) : filteredSearchGuests.length === 0 ? (
                   <p className="text-center text-xs text-rose-400 py-4">
@@ -825,7 +1060,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                           {g.firstName} {g.lastName}
                         </div>
                         <div className="text-[10px] text-[#C5A059] font-mono">
-                          {g.category} {g.tableOrSeat ? `• ${g.tableOrSeat}` : ''}
+                          {g.category} {g.tableOrSeat ? `• ${g.tableOrSeat}` : ''} • {g.token}
                         </div>
                       </div>
 
@@ -851,37 +1086,55 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
           )}
         </div>
 
-        {/* Quick Testing Simulator (Instant verification of admission states) */}
+        {/* Quick Simulator Bar with REAL GUEST TOKENS and QR Test Card Button */}
         <div className="px-4 py-2.5 bg-[#0d0d0d] border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <span className="font-montserrat text-[10px] tracking-wider text-white/50 uppercase font-semibold">
-            Simulador Rápido (1 Clic):
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="font-montserrat text-[10px] tracking-wider text-white/50 uppercase font-semibold">
+              Simulador con Invitados Reales:
+            </span>
+            <button
+              onClick={() => setShowTestQrModal(true)}
+              className="px-2 py-1 bg-[#C5A059]/20 hover:bg-[#C5A059]/30 text-[#E7CF98] border border-[#C5A059]/40 text-[10px] font-montserrat uppercase flex items-center gap-1 transition-colors cursor-pointer"
+              title="Mostrar un código QR en pantalla para apuntar con la cámara"
+            >
+              <QrCode className="w-3 h-3" />
+              <span>Ver QR de Prueba</span>
+            </button>
+          </div>
+
           <div className="flex flex-wrap items-center gap-1.5">
             <button
-              onClick={() => processGuestInspection('DIVO-4921')}
+              onClick={() => processGuestInspection('tk-pablo-honor-01')}
               className="px-2 py-1 bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono font-bold transition-colors cursor-pointer"
-              title="Marcelo Tinelli (Confirmado - Válido)"
+              title="Pablo Moreno (Confirmado - Válido)"
             >
-              ✓ M. Tinelli (Válido)
+              ✓ P. Moreno (Válido)
             </button>
             <button
-              onClick={() => processGuestInspection('DIVO-7832')}
+              onClick={() => processGuestInspection('tk-valeria-vip-02')}
+              className="px-2 py-1 bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono font-bold transition-colors cursor-pointer"
+              title="Valeria Mazza (Confirmada - Válida)"
+            >
+              ✓ V. Mazza (Válido)
+            </button>
+            <button
+              onClick={() => processGuestInspection('tk-marcos-vip-03')}
               className="px-2 py-1 bg-purple-950/70 hover:bg-purple-900 border border-purple-500/40 text-purple-300 text-[10px] font-mono font-bold transition-colors cursor-pointer"
-              title="Susana Giménez (Ya ingresó - Alerta)"
+              title="Marcos Villalobos (Ya ingresó - Alerta de duplicado)"
             >
-              ⚠ S. Giménez (Ya ingresó)
+              ⚠ M. Villalobos (Ya ingresó)
             </button>
             <button
-              onClick={() => processGuestInspection('DIVO-5190')}
+              onClick={() => processGuestInspection('tk-lucas-inv-05')}
               className="px-2 py-1 bg-amber-950/70 hover:bg-amber-900 border border-amber-500/40 text-amber-300 text-[10px] font-mono font-bold transition-colors cursor-pointer"
-              title="Mariana Fabbiani (Pendiente)"
+              title="Lucas Sarmiento (Pendiente)"
             >
-              ⏳ M. Fabbiani (Pendiente)
+              ⏳ L. Sarmiento (Pendiente)
             </button>
             <button
-              onClick={() => processGuestInspection('INVALID-999')}
+              onClick={() => processGuestInspection('INVALID-CODE-999')}
               className="px-2 py-1 bg-rose-950/70 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-[10px] font-mono font-bold transition-colors cursor-pointer"
-              title="Código Inválido"
+              title="Código no registrado"
             >
               ✕ Código Inválido
             </button>
@@ -901,7 +1154,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                 : 'bg-[#181818] border-neutral-600'
             }`}
           >
-            {/* 1. VALID INVITATION & FIRST ENTRY */}
+            {/* 1. VALID INVITATION */}
             {scanResultType === 'valid' && scannedGuest && (
               <div>
                 <div className="flex items-start justify-between">
@@ -941,9 +1194,9 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                   </div>
 
                   <div className="bg-black/40 p-2.5 border border-emerald-500/20">
-                    <span className="text-neutral-400 block text-[10px]">Menú especial:</span>
+                    <span className="text-neutral-400 block text-[10px]">Ubicación / Sector:</span>
                     <span className="font-bold text-[#E7CF98]">
-                      {scannedGuest.dietaryRestrictions || 'Sin restricciones'}
+                      {scannedGuest.tableOrSeat || 'Sector General'}
                     </span>
                   </div>
 
@@ -993,7 +1246,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                         onClick={clearScan}
                         className="py-1.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-black font-montserrat text-xs font-bold uppercase transition-colors cursor-pointer"
                       >
-                        Listo / Escanear siguiente
+                        Listo / Siguiente
                       </button>
                     </div>
                   </div>
@@ -1001,7 +1254,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
               </div>
             )}
 
-            {/* 2. ALREADY CHECKED IN (FRAUD / DUPLICATE PROTECTION) */}
+            {/* 2. ALREADY CHECKED IN */}
             {scanResultType === 'already-entered' && scannedGuest && (
               <div>
                 <div className="flex items-start justify-between">
@@ -1017,7 +1270,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                         {scannedGuest.firstName} {scannedGuest.lastName}
                       </h3>
                       <div className="text-xs text-rose-200 font-mono mt-0.5">
-                        Esta invitación ya fue escaneada y registrada a las{' '}
+                        Esta invitación ya fue escaneada e ingresó a las{' '}
                         <strong className="underline text-white">
                           {alreadyCheckedInTime
                             ? new Date(alreadyCheckedInTime).toLocaleTimeString('es-AR')
@@ -1058,7 +1311,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
               </div>
             )}
 
-            {/* 3. NOT CONFIRMED / DECLINED */}
+            {/* 3. NOT CONFIRMED */}
             {scanResultType === 'not-confirmed' && scannedGuest && (
               <div>
                 <div className="flex items-start justify-between">
@@ -1075,7 +1328,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                       </h3>
                       <div className="text-xs text-amber-200 font-mono mt-0.5">
                         Estado RSVP actual:{' '}
-                        <strong>{scannedGuest.status === 'declined' ? 'Había cancelado (No asiste)' : 'Pendiente sin confirmar'}</strong>
+                        <strong>{scannedGuest.status === 'declined' ? 'Había indicado que no asiste' : 'Pendiente sin confirmar'}</strong>
                       </div>
                     </div>
                   </div>
@@ -1128,7 +1381,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                   onClick={clearScan}
                   className="py-1.5 px-3 bg-white/10 hover:bg-white/20 text-white font-montserrat text-xs uppercase cursor-pointer"
                 >
-                  Reintentar
+                  Cerrar
                 </button>
               </div>
             )}
@@ -1136,7 +1389,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
         )}
       </div>
 
-      {/* Real-time Guest Attendance History */}
+      {/* Attendance History Table */}
       <div className="bg-[#111111] border border-white/10 p-4 rounded-sm">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-montserrat text-xs tracking-widest text-[#C5A059] uppercase font-bold flex items-center gap-1.5">
@@ -1201,6 +1454,59 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
           </table>
         </div>
       </div>
+
+      {/* MODAL: QR CODE CARD FOR LIVE CAMERA TESTING */}
+      {showTestQrModal && selectedSampleGuest && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#141414] border border-[#C5A059] max-w-sm w-full p-6 text-center shadow-2xl relative">
+            <button
+              onClick={() => setShowTestQrModal(false)}
+              className="absolute top-3 right-3 text-neutral-400 hover:text-white p-1 text-xs"
+            >
+              ✕
+            </button>
+
+            <span className="font-montserrat text-[10px] tracking-[0.2em] text-[#C5A059] uppercase font-bold">
+              QR Oficial de Muestra
+            </span>
+            <h3 className="font-montserrat text-lg font-bold text-white mt-1">
+              {selectedSampleGuest.firstName} {selectedSampleGuest.lastName}
+            </h3>
+            <p className="text-xs text-white/60 mb-4">
+              Apunta la cámara de tu celular o webcam a este código QR para probar la lectura en tiempo real.
+            </p>
+
+            <div className="bg-white p-4 inline-block rounded-sm shadow-xl mb-4 border border-[#C5A059]">
+              {sampleQrDataUrl ? (
+                <img src={sampleQrDataUrl} alt="QR de muestra" className="w-48 h-48 block mx-auto" />
+              ) : (
+                <div className="w-48 h-48 bg-neutral-200 animate-pulse"></div>
+              )}
+              <span className="font-mono text-[9px] text-black font-bold block mt-1">
+                {selectedSampleGuest.token}
+              </span>
+            </div>
+
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={() => {
+                  setShowTestQrModal(false);
+                  processGuestInspection(selectedSampleGuest.token);
+                }}
+                className="px-3 py-1.5 bg-[#C5A059] hover:bg-[#d4af37] text-black font-montserrat text-xs font-bold uppercase transition-colors"
+              >
+                Validar este invitado
+              </button>
+              <button
+                onClick={() => setShowTestQrModal(false)}
+                className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white font-montserrat text-xs uppercase"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

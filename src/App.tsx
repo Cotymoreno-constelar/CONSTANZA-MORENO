@@ -10,7 +10,9 @@ import {
   Clock,
   MapPin,
   ExternalLink,
-  ChevronDown
+  ChevronDown,
+  Camera,
+  Flame
 } from 'lucide-react';
 import { Guest } from './types/guest';
 import { GuestService } from './services/guestService';
@@ -21,38 +23,142 @@ import { RSVPView } from './components/rsvp/RSVPView';
 import { InvitationCard } from './components/invitation/InvitationCard';
 import { StageScreen } from './components/stage/StageScreen';
 import { DivoLogo } from './components/brand/DivoLogo';
+import { GuestUploadView } from './components/liveWall/GuestUploadView';
+import { ProjectionScreen } from './components/liveWall/ProjectionScreen';
+import { LiveWallAdmin } from './components/liveWall/LiveWallAdmin';
 
-type ViewTab = 'admin' | 'scanner' | 'card-preview' | 'rsvp' | 'stage';
+type ViewTab = 'admin' | 'scanner' | 'card-preview' | 'rsvp' | 'stage' | 'muro-admin' | 'muro-invitado' | 'pantalla-proyector';
+
+function parseInitialRoute(): {
+  token: string | null;
+  isAsistencia: boolean;
+  isOrganizer: boolean;
+  isMuroInvitado: boolean;
+  isPantalla: boolean;
+  slug: string;
+} {
+  if (typeof window === 'undefined') {
+    return { token: null, isAsistencia: false, isOrganizer: false, isMuroInvitado: false, isPantalla: false, slug: 'divo20' };
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  let hashParams = new URLSearchParams();
+  if (window.location.hash.includes('?')) {
+    hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
+  }
+
+  const token =
+    searchParams.get('guest') ||
+    searchParams.get('token') ||
+    searchParams.get('id') ||
+    hashParams.get('guest') ||
+    hashParams.get('token') ||
+    hashParams.get('id') ||
+    null;
+
+  const isOrganizer =
+    searchParams.has('admin') ||
+    hashParams.has('admin') ||
+    window.location.hash.includes('admin') ||
+    window.location.pathname.includes('/admin');
+
+  // Muro en vivo para invitados (subir foto/mensaje)
+  const isMuroInvitado =
+    searchParams.has('muro') ||
+    searchParams.has('fotos') ||
+    hashParams.has('muro') ||
+    window.location.pathname.includes('/e/');
+
+  // Pantalla completa de proyector
+  const isPantalla =
+    searchParams.has('pantalla') ||
+    hashParams.has('pantalla') ||
+    window.location.pathname.includes('/pantalla');
+
+  const slug = searchParams.get('slug') || hashParams.get('slug') || 'divo20';
+
+  // If there's a token, or asistencia query, or not an organizer, it's an attendance request
+  const isAsistencia =
+    Boolean(token) ||
+    searchParams.has('asistencia') ||
+    searchParams.has('rsvp') ||
+    hashParams.has('asistencia') ||
+    hashParams.has('rsvp') ||
+    window.location.hash.includes('asistencia') ||
+    window.location.hash.includes('rsvp');
+
+  return {
+    token: token ? decodeURIComponent(token).trim() : null,
+    isAsistencia,
+    isOrganizer,
+    isMuroInvitado,
+    isPantalla,
+    slug,
+  };
+}
 
 export default function App() {
+  const initialRoute = parseInitialRoute();
   const [guests, setGuests] = useState<Guest[]>(INITIAL_GUESTS);
-  const [activeTab, setActiveTab] = useState<ViewTab>('admin');
+  const [activeTab, setActiveTab] = useState<ViewTab>(
+    initialRoute.isPantalla
+      ? 'pantalla-proyector'
+      : initialRoute.isMuroInvitado
+      ? 'muro-invitado'
+      : initialRoute.isOrganizer
+      ? 'admin'
+      : 'rsvp'
+  );
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(INITIAL_GUESTS[0] || null);
-  const [isGuestModeFromUrl, setIsGuestModeFromUrl] = useState(false);
-  const [urlToken, setUrlToken] = useState<string | null>(null);
+  const [isGuestModeFromUrl, setIsGuestModeFromUrl] = useState(
+    (!initialRoute.isOrganizer || Boolean(initialRoute.token) || initialRoute.isAsistencia) &&
+    !initialRoute.isPantalla &&
+    !initialRoute.isMuroInvitado
+  );
+  const [isLoadingToken, setIsLoadingToken] = useState(Boolean(initialRoute.token));
+  const [urlToken, setUrlToken] = useState<string | null>(initialRoute.token);
 
   // Load guests and handle URL ?guest=... parameter
   useEffect(() => {
     // Initial fetch
-    GuestService.getAllGuests().then((all) => {
+    GuestService.getAllGuests().then(async (all) => {
       setGuests(all);
-      
-      // Check query param
-      const params = new URLSearchParams(window.location.search);
-      const guestParam = params.get('guest');
 
-      if (guestParam) {
-        setUrlToken(guestParam);
-        const match = all.find(
+      const route = parseInitialRoute();
+      if (route.token) {
+        setUrlToken(route.token);
+        let match: Guest | null | undefined = all.find(
           (g) =>
-            g.token.toLowerCase() === guestParam.toLowerCase() ||
-            g.id.toLowerCase() === guestParam.toLowerCase()
+            g.token.toLowerCase() === route.token!.toLowerCase() ||
+            g.id.toLowerCase() === route.token!.toLowerCase()
         );
+
+        if (!match) {
+          // Direct API fallback
+          match = await GuestService.getGuestByIdOrToken(route.token);
+        }
+
+        if (!match) {
+          // Self-hydrate from QR URL query params if scanned on another device
+          const resolved = GuestService.resolveGuestFromQRText(window.location.href, all);
+          if (resolved.guest) {
+            match = resolved.guest;
+            setGuests((prev) => [match!, ...prev.filter((g) => g.id !== match!.id)]);
+          }
+        }
+
         if (match) {
           setSelectedGuest(match);
           setActiveTab('rsvp');
           setIsGuestModeFromUrl(true);
+        } else if (all.length > 0) {
+          // If token was not found, default to first or let user choose
+          setSelectedGuest(all[0]);
         }
+        setIsLoadingToken(false);
+      } else if (route.isOrganizer) {
+        setIsGuestModeFromUrl(false);
+        setActiveTab('admin');
       } else if (all.length > 0 && !selectedGuest) {
         setSelectedGuest(all[0]);
       }
@@ -81,22 +187,46 @@ export default function App() {
   };
 
   const handleGuestUpdated = (updated: Guest) => {
-    setGuests((prev) => prev.map((g) => (g.id === updated.id ? updated : g)));
+    setGuests((prev) => {
+      const exists = prev.some((g) => g.id === updated.id);
+      return exists ? prev.map((g) => (g.id === updated.id ? updated : g)) : [updated, ...prev];
+    });
     if (selectedGuest?.id === updated.id) {
       setSelectedGuest(updated);
     }
   };
 
   // If a guest lands here directly from a WhatsApp invitation link or QR scan
-  if (isGuestModeFromUrl && selectedGuest) {
+  if (isGuestModeFromUrl) {
+    if (isLoadingToken) {
+      return (
+        <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center p-6 text-center">
+          <DivoLogo size="md" showSubtext={true} showTapeMeasure={true} />
+          <div className="mt-6 flex items-center gap-2 text-xs font-montserrat text-[#C5A059] tracking-widest uppercase">
+            <span className="w-2 h-2 rounded-full bg-[#C5A059] animate-ping"></span>
+            <span>Cargando tu invitación exclusiva...</span>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="relative">
-        {/* Floating organizer switch bar at top */}
-        <header className="bg-black/90 border-b border-white/10 px-4 py-2 flex items-center justify-between text-xs z-50 text-neutral-400">
+      <div className="relative min-h-screen bg-[#0a0a0a] text-[#FAF7F2] flex flex-col justify-between">
+        {/* Discrete Luxury Event Top Bar */}
+        <header className="bg-black/95 border-b border-[#C5A059]/20 px-4 py-2 flex items-center justify-between text-xs z-50 text-neutral-400">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span className="text-[11px] font-montserrat">
-              Invitación exclusiva: <strong>{selectedGuest.firstName} {selectedGuest.lastName}</strong>
+            <span className="w-2 h-2 rounded-full bg-[#C5A059] animate-pulse"></span>
+            <span className="text-[11px] font-montserrat text-white/80">
+              {selectedGuest ? (
+                <>
+                  Invitación oficial:{' '}
+                  <strong className="text-white font-semibold">
+                    {selectedGuest.firstName} {selectedGuest.lastName}
+                  </strong>
+                </>
+              ) : (
+                'Invitación Oficial • DIVO 20 Años'
+              )}
             </span>
           </div>
 
@@ -104,24 +234,54 @@ export default function App() {
             onClick={() => {
               setIsGuestModeFromUrl(false);
               setActiveTab('admin');
-              // Remove query param from browser address bar smoothly
               window.history.pushState({}, '', window.location.pathname);
             }}
-            className="text-[10px] font-montserrat tracking-wider uppercase text-[#C5A059] hover:underline"
+            className="text-[10px] font-montserrat tracking-wider uppercase text-[#C5A059]/70 hover:text-[#E7CF98] transition-colors flex items-center gap-1 cursor-pointer"
+            title="Acceso exclusivo para organizadores y staff"
           >
-            Modo Organizador / Panel →
+            <span>Panel Organizador</span>
+            <span>→</span>
           </button>
         </header>
 
-        <RSVPView
-          guest={selectedGuest}
-          onUpdateSuccess={handleGuestUpdated}
-          onGoToAdmin={() => {
-            setIsGuestModeFromUrl(false);
-            setActiveTab('admin');
-            window.history.pushState({}, '', window.location.pathname);
-          }}
-        />
+        {selectedGuest ? (
+          <RSVPView
+            guest={selectedGuest}
+            onUpdateSuccess={handleGuestUpdated}
+            onGoToAdmin={() => {
+              setIsGuestModeFromUrl(false);
+              setActiveTab('admin');
+              window.history.pushState({}, '', window.location.pathname);
+            }}
+          />
+        ) : (
+          <div className="max-w-md mx-auto my-12 p-6 bg-[#121212] border border-[#C5A059]/40 text-center">
+            <DivoLogo size="sm" showSubtext={false} />
+            <h3 className="text-lg font-montserrat font-bold text-white mt-4">
+              Confirmación de Asistencia
+            </h3>
+            <p className="text-xs text-white/70 mt-2">
+              Selecciona tu nombre para confirmar tu asistencia:
+            </p>
+            <div className="mt-4 flex flex-col gap-2 max-h-60 overflow-y-auto">
+              {guests.map((g) => (
+                <button
+                  key={g.id}
+                  onClick={() => setSelectedGuest(g)}
+                  className="p-2.5 text-left text-xs bg-white/5 hover:bg-[#C5A059]/20 hover:border-[#C5A059] border border-white/10 text-white transition-colors"
+                >
+                  <div className="font-bold">{g.firstName} {g.lastName}</div>
+                  <div className="text-[10px] text-white/50">{g.category}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <footer className="border-t border-white/5 py-4 px-4 text-center text-[10px] font-montserrat text-white/40">
+          <span>DIVO Trajes y Etiqueta • 20 Años Vistiendo Momentos • Capilla Buen Pastor, Córdoba</span>
+        </footer>
       </div>
     );
   }
@@ -213,6 +373,32 @@ export default function App() {
               <Tv className="w-3.5 h-3.5" />
               <span>Escenario</span>
             </button>
+
+            {/* Muro en Vivo Moderación */}
+            <button
+              onClick={() => setActiveTab('muro-admin')}
+              className={`py-2 px-3 sm:px-4 text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeTab === 'muro-admin'
+                  ? 'bg-[#C5A059] text-black shadow-md'
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Camera className="w-3.5 h-3.5 text-[#C5A059]" />
+              <span>Muro en Vivo</span>
+            </button>
+
+            {/* Pantalla Gigante Proyector */}
+            <button
+              onClick={() => setActiveTab('pantalla-proyector')}
+              className={`py-2 px-3 sm:px-4 text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeTab === 'pantalla-proyector'
+                  ? 'bg-[#C5A059] text-black shadow-md'
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Flame className="w-3.5 h-3.5 text-amber-400" />
+              <span>Pantalla Proyector</span>
+            </button>
           </nav>
         </div>
       </header>
@@ -268,6 +454,7 @@ export default function App() {
             onSelectGuestForPreview={handleSelectGuestForPreview}
             onOpenRSVPPage={handleOpenRSVPPage}
             onGoToScanner={() => setActiveTab('scanner')}
+            onGoToLiveWall={() => setActiveTab('muro-admin')}
           />
         )}
 
@@ -315,6 +502,34 @@ export default function App() {
 
         {/* TAB 5: STAGE & PRESS VISUALS */}
         {activeTab === 'stage' && <StageScreen />}
+
+        {/* TAB 6: MURO EN VIVO - PANEL DE MODERACIÓN ADMIN */}
+        {activeTab === 'muro-admin' && (
+          <LiveWallAdmin
+            onOpenProjectionScreen={() => setActiveTab('pantalla-proyector')}
+            onOpenGuestUpload={() => setActiveTab('muro-invitado')}
+          />
+        )}
+
+        {/* TAB 7: MURO EN VIVO - INTERFAZ MOBILE PARA SUBIR FOTO */}
+        {activeTab === 'muro-invitado' && (
+          <GuestUploadView
+            slug="divo20"
+            defaultGuestName={selectedGuest ? `${selectedGuest.firstName} ${selectedGuest.lastName}` : ''}
+            onGoBackToInvitation={() => setActiveTab('rsvp')}
+            onOpenLiveWallScreen={() => setActiveTab('pantalla-proyector')}
+          />
+        )}
+
+        {/* TAB 8: PANTALLA GIGANTE PROYECTOR (FONDO OSCURO, REALTIME, SIN CONTROLES MOLESTOS) */}
+        {activeTab === 'pantalla-proyector' && (
+          <div className="fixed inset-0 z-50 bg-[#070707]">
+            <ProjectionScreen
+              slug="divo20"
+              onExit={() => setActiveTab('muro-admin')}
+            />
+          </div>
+        )}
       </main>
 
       {/* Footer */}
@@ -332,7 +547,7 @@ export default function App() {
           </div>
 
           <div className="font-mono text-[10px] text-neutral-500">
-            DIVO Gala System • 20 Años
+            DIVO 20 Años • Vistiendo Momentos
           </div>
         </div>
       </footer>

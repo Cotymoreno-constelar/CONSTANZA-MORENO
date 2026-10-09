@@ -21,17 +21,26 @@ import {
   Calendar,
   Layers,
   Printer,
-  Copy
+  Copy,
+  Bell,
+  MessageCircle,
+  Image as ImageIcon,
+  FileSpreadsheet,
+  QrCode
 } from 'lucide-react';
 import { Guest, EventStats, GuestCategory, RSVPStatus } from '../../types/guest';
 import { GuestService, calculateStats } from '../../services/guestService';
 import { InvitationCard } from '../invitation/InvitationCard';
+import { DivoLogo, getCustomLogoUrl, setCustomLogoUrl } from '../brand/DivoLogo';
+import { ExcelImportModal, exportGuestsToExcel } from './ExcelImportModal';
+import { QRGeneratorModal } from './QRGeneratorModal';
 
 interface AdminDashboardProps {
   guests: Guest[];
   onSelectGuestForPreview: (guest: Guest) => void;
   onOpenRSVPPage: (guest: Guest) => void;
   onGoToScanner: () => void;
+  onGoToLiveWall?: () => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -39,6 +48,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onSelectGuestForPreview,
   onOpenRSVPPage,
   onGoToScanner,
+  onGoToLiveWall,
 }) => {
   const [searchFilter, setSearchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -48,6 +58,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [isBatchDownloadModalOpen, setIsBatchDownloadModalOpen] = useState(false);
+  const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
+  const [customLogoPreview, setCustomLogoPreview] = useState<string | null>(() => getCustomLogoUrl());
   const [selectedGuestForCard, setSelectedGuestForCard] = useState<Guest | null>(null);
   const [editingGuest, setEditingGuest] = useState<Guest | null>(null);
 
@@ -90,11 +103,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleAddSingleGuest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newFirstName.trim() || !newLastName.trim()) return;
+    if (!newFirstName.trim()) return;
 
-    await GuestService.addGuest({
-      firstName: newFirstName.trim(),
-      lastName: newLastName.trim(),
+    let firstName = newFirstName.trim();
+    let lastName = newLastName.trim();
+    if (!lastName && firstName.includes(' ')) {
+      const parts = firstName.split(/\s+/);
+      firstName = parts[0];
+      lastName = parts.slice(1).join(' ');
+    }
+
+    const created = await GuestService.addGuest({
+      firstName,
+      lastName,
       email: newEmail.trim() || undefined,
       phone: newPhone.trim() || undefined,
       category: newCategory,
@@ -110,6 +131,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setNewTable('');
     setNewCompanionsAllowed(1);
     setIsAddModalOpen(false);
+    // Open the generated QR & Invitation Card immediately
+    setSelectedGuestForCard(created);
   };
 
   const handleBulkAdd = async () => {
@@ -179,7 +202,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       'Estado RSVP',
       'Acompañantes Confirmados',
       'Nombre Acompañante',
-      'Dieta',
       'Mensaje',
       'Fecha Respuesta',
       'Ingresó en Puerta',
@@ -199,7 +221,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       `"${g.status}"`,
       g.confirmedCompanions || 0,
       `"${g.companionName || ''}"`,
-      `"${g.dietaryRestrictions || ''}"`,
       `"${(g.congratulationMessage || '').replace(/"/g, '""')}"`,
       `"${g.respondedAt || ''}"`,
       g.checkedIn ? 'SÍ' : 'NO',
@@ -243,7 +264,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div style="color: #C5A059; font-size: 8px; text-transform: uppercase; letter-spacing: 0.2em; margin-top: 8px;">FECHA Y HORA</div>
                 <div style="font-weight: 600;">22 DE OCTUBRE — 19:00 HS</div>
                 <div style="margin-top: 10px; display: inline-block; padding: 4px 8px; border: 1px solid #C5A059; color: #E7CF98; font-size: 8px; letter-spacing: 0.15em;">
-                  DRESS CODE: GALA (PRENDAS DIVO)
+                  DRESS CODE: ELEGANTE
                 </div>
               </div>
             </div>
@@ -312,6 +333,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span>Abrir Escáner Puerta</span>
           </button>
 
+          {/* Quick Live Wall shortcut */}
+          {onGoToLiveWall && (
+            <button
+              onClick={onGoToLiveWall}
+              className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-white border border-[#C5A059] font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              title="Abrir moderación y pantalla de fotos en vivo"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
+              <span>Muro en Vivo</span>
+            </button>
+          )}
+
+          {/* Subir Logo Real */}
+          <button
+            onClick={() => {
+              setCustomLogoPreview(getCustomLogoUrl());
+              setIsLogoModalOpen(true);
+            }}
+            className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-[#C5A059] border border-[#C5A059] font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+            title="Subir el archivo de logo real (PNG, SVG o JPG) para aplicar en toda la app y tarjetas"
+          >
+            <ImageIcon className="w-3.5 h-3.5 text-[#C5A059]" />
+            <span>Logo Oficial</span>
+          </button>
+
+          {/* Recordatorio Hoy por WhatsApp */}
+          <button
+            onClick={() => setIsReminderModalOpen(true)}
+            className="py-2.5 px-3.5 bg-gradient-to-r from-emerald-950 to-[#181818] hover:bg-emerald-900/60 text-emerald-300 border border-emerald-500/50 font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+            title="Enviar mensaje de recordatorio del día del evento a los invitados confirmados"
+          >
+            <Bell className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Recordatorio Hoy ({stats.confirmedGuests})</span>
+          </button>
+
+          {/* Centro Generador de QR & Lotes */}
+          <button
+            onClick={() => setIsBatchDownloadModalOpen(true)}
+            className="py-2.5 px-3.5 bg-gradient-to-r from-[#261f12] to-[#181818] hover:from-[#C5A059] hover:to-[#d4af37] text-[#E7CF98] hover:text-black border border-[#C5A059] font-montserrat text-xs tracking-wider uppercase font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+            title="Abrir Centro Generador de Códigos QR y descarga masiva de tarjetas en ZIP o PDF"
+          >
+            <QrCode className="w-3.5 h-3.5" />
+            <span>Generador de QR</span>
+          </button>
+
           {/* Add Single Guest */}
           <button
             onClick={() => setIsAddModalOpen(true)}
@@ -321,33 +387,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span>Nuevo Invitado</span>
           </button>
 
-          {/* Bulk Import */}
+          {/* Bulk Import Excel / CSV */}
           <button
             onClick={() => setIsBulkModalOpen(true)}
-            className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-white border border-white/20 font-montserrat text-xs tracking-wider uppercase font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-[#E7CF98] border border-[#C5A059]/60 font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+            title="Importar lista de invitados desde archivo Excel (.xlsx, .xls, .csv) o copiar y pegar"
           >
-            <Upload className="w-3.5 h-3.5 text-[#C5A059]" />
-            <span>Carga Masiva</span>
+            <FileSpreadsheet className="w-3.5 h-3.5 text-[#C5A059]" />
+            <span>Importar Excel</span>
           </button>
 
-          {/* Export CSV */}
+          {/* Export Excel (.xlsx) */}
           <button
-            onClick={handleExportCSV}
+            onClick={() => exportGuestsToExcel(guests)}
             className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-white border border-white/20 font-montserrat text-xs tracking-wider uppercase font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="Exportar reporte completo en Excel / CSV"
+            title="Descargar padrón completo, confirmados e ingresados en formato Excel (.xlsx)"
           >
             <Download className="w-3.5 h-3.5 text-[#C5A059]" />
-            <span>Exportar CSV</span>
-          </button>
-
-          {/* Batch Print All Cards */}
-          <button
-            onClick={handlePrintAllCards}
-            className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-white border border-white/20 font-montserrat text-xs tracking-wider uppercase font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="Generar vista imprimible o PDF de todas las tarjetas"
-          >
-            <Printer className="w-3.5 h-3.5 text-[#C5A059]" />
-            <span>Imprimir Lote</span>
+            <span>Exportar Excel</span>
           </button>
         </div>
       </div>
@@ -558,20 +615,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       )}
                     </td>
 
-                    {/* Companions & Diet */}
+                    {/* Companions */}
                     <td className="py-3.5 px-3 text-neutral-300">
                       {guest.status === 'confirmed' ? (
-                        <div>
-                          <div className="font-semibold text-white">
-                            {guest.confirmedCompanions > 0
-                              ? `+${guest.confirmedCompanions} (${guest.companionName || 'Acompañante'})`
-                              : 'Solo titular'}
-                          </div>
-                          {guest.dietaryRestrictions && (
-                            <div className="text-[10px] text-[#E7CF98] font-mono mt-0.5">
-                              🍽️ {guest.dietaryRestrictions}
-                            </div>
-                          )}
+                        <div className="font-semibold text-white">
+                          {guest.confirmedCompanions > 0
+                            ? `+${guest.confirmedCompanions} (${guest.companionName || 'Acompañante'})`
+                            : 'Solo titular'}
                         </div>
                       ) : (
                         <span className="text-white/40 text-[11px]">
@@ -610,6 +660,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <Share2 className="w-3.5 h-3.5" />
                         </a>
 
+                        {/* WhatsApp Reminder (Hoy es el evento) */}
+                        <a
+                          href={GuestService.getWhatsAppReminderUrl(guest)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1.5 bg-emerald-950/80 hover:bg-emerald-600 text-emerald-400 hover:text-white transition-colors rounded-sm border border-emerald-500/40"
+                          title="Enviar recordatorio matutino del día del evento con QR y horario"
+                        >
+                          <Bell className="w-3.5 h-3.5" />
+                        </a>
+
                         {/* Copy Link */}
                         <button
                           onClick={() => handleCopyLink(guest)}
@@ -623,13 +684,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           )}
                         </button>
 
-                        {/* View Card Modal */}
+                        {/* View QR & Card Modal */}
                         <button
                           onClick={() => setSelectedGuestForCard(guest)}
-                          className="p-1.5 bg-white/5 hover:bg-[#C5A059] text-white hover:text-black transition-colors rounded-sm"
-                          title="Ver y descargar Tarjeta Digital con QR"
+                          className="px-2 py-1 bg-[#C5A059]/20 hover:bg-[#C5A059] border border-[#C5A059]/50 text-[#E7CF98] hover:text-black font-montserrat text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors rounded-sm cursor-pointer"
+                          title="Ver y descargar Código QR y Tarjeta Digital"
                         >
-                          <Eye className="w-3.5 h-3.5" />
+                          <QrCode className="w-3.5 h-3.5" />
+                          <span>QR</span>
                         </button>
 
                         {/* Open Guest RSVP View */}
@@ -716,10 +778,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">Apellido *</label>
+                  <label className="block text-[11px] font-montserrat text-white/70 mb-1">Apellido</label>
                   <input
                     type="text"
-                    required
                     value={newLastName}
                     onChange={(e) => setNewLastName(e.target.value)}
                     placeholder="Ej: Tinelli"
@@ -812,49 +873,175 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* MODAL: Bulk Import */}
-      {isBulkModalOpen && (
+      {/* MODAL: Bulk Import Excel / CSV */}
+      <ExcelImportModal
+        isOpen={isBulkModalOpen}
+        onClose={() => setIsBulkModalOpen(false)}
+        existingGuests={guests}
+        onOpenQRGenerator={() => setIsBatchDownloadModalOpen(true)}
+      />
+
+      {/* MODAL: Centro Generador de QR & Descarga en Lote */}
+      <QRGeneratorModal
+        isOpen={isBatchDownloadModalOpen}
+        onClose={() => setIsBatchDownloadModalOpen(false)}
+        guests={guests}
+        onSelectGuestForCard={(g) => setSelectedGuestForCard(g)}
+      />
+
+      {/* MODAL: Recordatorio Día del Evento WhatsApp */}
+      {isReminderModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#141414] border border-[#C5A059] p-6 max-w-lg w-full rounded-sm shadow-2xl relative text-left">
+          <div className="bg-[#141414] border-2 border-emerald-500/70 p-6 max-w-2xl w-full rounded-sm shadow-2xl relative text-left">
             <button
-              onClick={() => setIsBulkModalOpen(false)}
-              className="absolute top-3 right-3 text-white/60 hover:text-white font-mono text-sm"
+              onClick={() => setIsReminderModalOpen(false)}
+              className="absolute top-4 right-4 text-white/60 hover:text-white font-mono text-sm"
             >
               ✕
             </button>
 
-            <h3 className="font-montserrat text-sm tracking-[0.2em] text-[#C5A059] uppercase font-bold mb-2">
-              Carga Masiva de Invitados
-            </h3>
-            <p className="text-xs text-white/60 mb-4">
-              Pega la lista de invitados, uno por línea. Puedes pegar sólo nombres y apellidos (ej: <code>Juan Pérez</code>) o en formato separado por comas (<code>Nombre, Apellido, Email, Teléfono, Categoría</code>).
+            <div className="flex items-center gap-2 mb-2">
+              <span className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-sm">
+                <Bell className="w-5 h-5" />
+              </span>
+              <h3 className="font-montserrat text-base tracking-wider text-emerald-400 uppercase font-bold">
+                Recordatorio Matutino del Evento por WhatsApp
+              </h3>
+            </div>
+            <p className="text-xs text-white/70 mb-4">
+              Enviá a cada invitado confirmado el recordatorio para hoy con su horario (19:00 hs), ubicación en Capilla Buen Pastor y enlace directo a su tarjeta con código QR.
             </p>
 
-            <textarea
-              rows={8}
-              value={bulkText}
-              onChange={(e) => setBulkText(e.target.value)}
-              placeholder="Guillermo Francella, VIP
-Valeria Mazza, VIP
-Mariana Fabbiani, Prensa
-Santiago Del Moro, Invitado General"
-              className="w-full bg-[#1e1e1e] border border-white/20 p-3 text-xs font-mono text-white placeholder-white/30 focus:outline-none focus:border-[#C5A059]"
-            />
+            <div className="bg-black/60 border border-white/10 p-3 mb-4 rounded-sm text-xs font-mono text-neutral-300">
+              <span className="text-[#C5A059] font-bold block mb-1">Vista previa del mensaje:</span>
+              "¡Hola [Nombre]! ✨ ¡Hoy es el gran día! Te esperamos esta tarde para celebrar juntos los 20 Años de DIVO Trajes y Etiqueta... ⏰ 19:00 hs puntual | 📍 Capilla Buen Pastor | 👔 Dress Code: Elegante | 🎟️ Tu pase y QR: [Link]"
+            </div>
 
-            <div className="pt-3 flex justify-end gap-2">
+            <div className="max-h-72 overflow-y-auto divide-y divide-white/5 border border-white/10 p-2 bg-[#101010]">
+              {guests.filter((g) => g.status === 'confirmed').length === 0 ? (
+                <div className="text-center py-6 text-xs text-white/40">
+                  No hay invitados confirmados aún.
+                </div>
+              ) : (
+                guests
+                  .filter((g) => g.status === 'confirmed')
+                  .map((guest) => {
+                    const reminderUrl = GuestService.getWhatsAppReminderUrl(guest);
+                    return (
+                      <div key={guest.id} className="py-2.5 px-3 flex items-center justify-between gap-3 hover:bg-white/5 transition-colors">
+                        <div>
+                          <div className="font-montserrat font-bold text-xs text-white">
+                            {guest.firstName} {guest.lastName}
+                          </div>
+                          <div className="text-[10px] text-white/50 font-mono">
+                            {guest.phone ? `📞 ${guest.phone}` : 'Sin teléfono'} • {guest.category}
+                          </div>
+                        </div>
+
+                        <a
+                          href={reminderUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-montserrat text-[11px] font-bold uppercase tracking-wider rounded-sm flex items-center gap-1.5 transition-colors"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>Enviar Recordatorio</span>
+                        </a>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+
+            <div className="pt-4 flex justify-end">
               <button
                 type="button"
-                onClick={() => setIsBulkModalOpen(false)}
-                className="py-2 px-4 bg-transparent border border-white/20 text-white font-montserrat text-xs uppercase"
+                onClick={() => setIsReminderModalOpen(false)}
+                className="py-2 px-5 bg-white/10 hover:bg-white/20 text-white font-montserrat text-xs uppercase tracking-wider"
               >
-                Cancelar
+                Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: SUBIR LOGO OFICIAL REAL */}
+      {isLogoModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#121212] border border-[#C5A059] max-w-lg w-full p-6 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-white/10 pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-[#C5A059]" />
+                <h3 className="font-montserrat text-sm font-bold tracking-widest uppercase text-[#C5A059]">
+                  Subir Logo Real — DIVO 20 Años
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsLogoModalOpen(false)}
+                className="text-white/50 hover:text-white text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-white/70 font-montserrat mb-4 leading-relaxed">
+              Subí el archivo original del logo (idealmente <strong>PNG con fondo transparente</strong> o <strong>SVG</strong>). Se actualizará automáticamente en la barra superior, tarjetas de invitación, página RSVP, Muro en Vivo y plantillas de Instagram Stories.
+            </p>
+
+            {/* Vista previa actual */}
+            <div className="bg-black border border-[#C5A059]/30 p-6 flex flex-col items-center justify-center min-h-[160px] mb-4">
+              <span className="text-[10px] font-montserrat uppercase tracking-widest text-white/40 mb-3">
+                Vista Previa Actual
+              </span>
+              <DivoLogo size="md" />
+            </div>
+
+            {/* Selector de archivo */}
+            <div className="flex flex-col gap-3">
+              <label className="w-full py-3 px-4 bg-gradient-to-r from-[#C5A059] to-[#8C6E38] hover:from-[#d4af37] hover:to-[#9a783e] text-black font-montserrat text-xs font-bold uppercase tracking-widest text-center cursor-pointer flex items-center justify-center gap-2 shadow-md transition-all">
+                <Upload className="w-4 h-4" />
+                <span>Seleccionar archivo de Logo (PNG / SVG / WEBP)</span>
+                <input
+                  type="file"
+                  accept="image/png,image/svg+xml,image/webp,image/jpeg"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      const result = reader.result as string;
+                      setCustomLogoUrl(result);
+                      setCustomLogoPreview(result);
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+              </label>
+
+              {customLogoPreview && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomLogoUrl(null);
+                    setCustomLogoPreview(null);
+                  }}
+                  className="py-2 px-4 bg-red-950/40 hover:bg-red-900/50 border border-red-500/40 text-red-300 font-montserrat text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Restaurar Logo Tipográfico Original</span>
+                </button>
+              )}
+            </div>
+
+            <div className="pt-5 mt-4 border-t border-white/10 flex justify-end">
               <button
                 type="button"
-                onClick={handleBulkAdd}
-                className="py-2 px-5 bg-[#C5A059] hover:bg-[#d4af37] text-black font-montserrat text-xs font-bold uppercase tracking-wider"
+                onClick={() => setIsLogoModalOpen(false)}
+                className="py-2 px-5 bg-white/10 hover:bg-white/20 text-white font-montserrat text-xs uppercase tracking-wider cursor-pointer"
               >
-                Importar Invitados
+                Listo
               </button>
             </div>
           </div>
