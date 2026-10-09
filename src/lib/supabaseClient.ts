@@ -10,15 +10,15 @@
 
 export const SUPABASE_URL = (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) ||
   (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL) ||
-  'https://xyzcompany.supabase.co';
+  "https://spwjmzoshgpqblcojiui.supabase.co";
 
 export const SUPABASE_ANON_KEY = (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_ANON_KEY) ||
   (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_ANON_KEY) ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNwd2ptem9zaGdwcWJsY29qaXVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NjM1MjIsImV4cCI6MjEwNzEzOTUyMn0.Y5jp3PNq4n97JpbxWZ7XR6GcKQ2wowQyhGwQhNiUP14";
 
 export const isSupabaseConfigured = Boolean(
   SUPABASE_URL &&
-  !SUPABASE_URL.includes('xyzcompany') &&
+  !SUPABASE_URL.includes("xyzcompany") &&
   SUPABASE_ANON_KEY &&
-  !SUPABASE_ANON_KEY.includes('...')
+  !SUPABASE_ANON_KEY.includes("...")
 );
