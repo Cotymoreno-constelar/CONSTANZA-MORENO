@@ -77,15 +77,13 @@ function parseInitialRoute(): {
 
   const slug = searchParams.get('slug') || hashParams.get('slug') || 'divo20';
 
-  // If there's a token, or asistencia query, or not an organizer, it's an attendance request
+  // Solo se activa vista de confirmación si viene un token explícito o parámetro de asistencia
   const isAsistencia =
     Boolean(token) ||
     searchParams.has('asistencia') ||
     searchParams.has('rsvp') ||
     hashParams.has('asistencia') ||
-    hashParams.has('rsvp') ||
-    window.location.hash.includes('asistencia') ||
-    window.location.hash.includes('rsvp');
+    hashParams.has('rsvp');
 
   return {
     token: token ? decodeURIComponent(token).trim() : null,
@@ -105,13 +103,14 @@ export default function App() {
       ? 'pantalla-proyector'
       : initialRoute.isMuroInvitado
       ? 'muro-invitado'
-      : initialRoute.isOrganizer
-      ? 'admin'
-      : 'rsvp'
+      : (initialRoute.token || initialRoute.isAsistencia) && !initialRoute.isOrganizer
+      ? 'rsvp'
+      : 'admin' // La pantalla principal es SIEMPRE el Panel de Administración
   );
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(INITIAL_GUESTS[0] || null);
   const [isGuestModeFromUrl, setIsGuestModeFromUrl] = useState(
-    (!initialRoute.isOrganizer || Boolean(initialRoute.token) || initialRoute.isAsistencia) &&
+    Boolean(initialRoute.token || initialRoute.isAsistencia) &&
+    !initialRoute.isOrganizer &&
     !initialRoute.isPantalla &&
     !initialRoute.isMuroInvitado
   );
