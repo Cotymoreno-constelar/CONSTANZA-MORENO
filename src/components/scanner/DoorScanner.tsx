@@ -1196,7 +1196,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                             companionsAllowed: Math.max(scannedGuest.companionsAllowed, count),
                           });
                           setScannedGuest(updated);
-                          onGuestUpdated(updated);
+                          onGuestUpdated?.(updated);
                         }}
                         className="bg-[#181818] border border-emerald-500/40 px-2 py-1 text-xs font-bold text-white focus:outline-none focus:border-[#C5A059]"
                       >
@@ -1215,7 +1215,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                             companionName: e.target.value || undefined,
                           });
                           setScannedGuest(updated);
-                          onGuestUpdated(updated);
+                          onGuestUpdated?.(updated);
                         }}
                         className="w-full bg-[#181818] border border-emerald-500/30 px-2 py-1 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#C5A059]"
                       />
@@ -1233,7 +1233,7 @@ export const DoorScanner: React.FC<DoorScannerProps> = ({
                           tableOrSeat: e.target.value || undefined,
                         });
                         setScannedGuest(updated);
-                        onGuestUpdated(updated);
+                        onGuestUpdated?.(updated);
                       }}
                       className="w-full bg-[#181818] border border-emerald-500/30 px-2 py-1 text-xs font-bold text-[#E7CF98] placeholder-white/30 focus:outline-none focus:border-[#C5A059]"
                     />

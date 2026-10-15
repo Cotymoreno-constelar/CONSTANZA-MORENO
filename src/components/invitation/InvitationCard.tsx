@@ -5,6 +5,7 @@ import { Guest } from '../../types/guest';
 import { DivoLogo } from '../brand/DivoLogo';
 import { GuestService } from '../../services/guestService';
 import { generateQRDataUrl, renderInvitationCardToDataUrl } from '../../utils/qrCardRenderer';
+import { openWhatsAppInSingleTab } from '../../utils/whatsappUtils';
 
 interface InvitationCardProps {
   guest: Guest;
@@ -284,17 +285,19 @@ export const InvitationCard: React.FC<InvitationCardProps> = ({
               <span>PDF</span>
             </button>
 
-            {/* WhatsApp Direct Share */}
-            <a
-              href={waUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-1.5 py-2.5 px-2 bg-[#25D366]/90 hover:bg-[#25D366] text-black font-montserrat text-[11px] font-semibold tracking-wider uppercase transition-colors shadow-sm"
-              title="Compartir invitación por WhatsApp"
+            {/* WhatsApp Direct Share (Reuses single tab to prevent opening multiple tabs) */}
+            <button
+              type="button"
+              onClick={() => {
+                openWhatsAppInSingleTab(waUrl);
+                GuestService.markWhatsAppSent(guest.id, true);
+              }}
+              className="flex items-center justify-center gap-1.5 py-2.5 px-2 bg-[#25D366]/90 hover:bg-[#25D366] text-black font-montserrat text-[11px] font-semibold tracking-wider uppercase transition-colors shadow-sm cursor-pointer"
+              title="Compartir invitación por WhatsApp (Pestaña única inteligente sin saturar el navegador)"
             >
               <Share2 className="w-3.5 h-3.5" />
               <span>WhatsApp</span>
-            </a>
+            </button>
           </div>
 
           {/* Copy link option & Edit Guest */}

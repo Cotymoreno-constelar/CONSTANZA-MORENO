@@ -26,6 +26,11 @@ export interface Guest {
   checkedInBy?: string;
   checkInNotes?: string;
 
+  // WhatsApp dispatch tracking
+  whatsappSent?: boolean;
+  whatsappSentAt?: string;
+  whatsappNotes?: string;
+
   createdAt: string;
   updatedAt: string;
 }

@@ -26,7 +26,8 @@ import {
   MessageCircle,
   Image as ImageIcon,
   FileSpreadsheet,
-  QrCode
+  QrCode,
+  Zap
 } from 'lucide-react';
 import { Guest, EventStats, GuestCategory, RSVPStatus } from '../../types/guest';
 import { GuestService, calculateStats } from '../../services/guestService';
@@ -34,6 +35,8 @@ import { InvitationCard } from '../invitation/InvitationCard';
 import { DivoLogo, getCustomLogoUrl, setCustomLogoUrl } from '../brand/DivoLogo';
 import { ExcelImportModal, exportGuestsToExcel } from './ExcelImportModal';
 import { QRGeneratorModal } from './QRGeneratorModal';
+import { WhatsAppAutomationModal } from './WhatsAppAutomationModal';
+import { openWhatsAppInSingleTab, cleanAndFormatPhoneNumber } from '../../utils/whatsappUtils';
 
 interface AdminDashboardProps {
   guests: Guest[];
@@ -59,6 +62,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [isBatchDownloadModalOpen, setIsBatchDownloadModalOpen] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
+  const [isWhatsAppAutoModalOpen, setIsWhatsAppAutoModalOpen] = useState(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [customLogoPreview, setCustomLogoPreview] = useState<string | null>(() => getCustomLogoUrl());
   const [selectedGuestForCard, setSelectedGuestForCard] = useState<Guest | null>(null);
@@ -149,6 +153,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const stats = calculateStats(guests);
 
+  const pendingWhatsAppCount = guests.filter(
+    (g) => !g.whatsappSent && cleanAndFormatPhoneNumber(g.phone).isValid
+  ).length;
+  const sentWhatsAppCount = guests.filter((g) => g.whatsappSent).length;
+
   // Filtering
   const filteredGuests = guests.filter((g) => {
     const matchesSearch =
@@ -158,10 +167,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     const matchesStatus =
       statusFilter === 'all' ||
-      (statusFilter === 'checkedIn' && g.checkedIn) ||
       (statusFilter === 'confirmed' && g.status === 'confirmed' && !g.checkedIn) ||
+      (statusFilter === 'checkedIn' && g.checkedIn) ||
       (statusFilter === 'pending' && g.status === 'pending') ||
-      (statusFilter === 'declined' && g.status === 'declined');
+      (statusFilter === 'declined' && g.status === 'declined') ||
+      (statusFilter === 'wa-pending' && !g.whatsappSent) ||
+      (statusFilter === 'wa-sent' && g.whatsappSent);
 
     const matchesCategory =
       categoryFilter === 'all' || g.category === categoryFilter;
@@ -426,6 +437,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span>Logo Oficial</span>
           </button>
 
+          {/* Automatizar Envíos WhatsApp (Piloto Automático & Cero Pestañas) */}
+          <button
+            onClick={() => setIsWhatsAppAutoModalOpen(true)}
+            className="py-2.5 px-3.5 bg-gradient-to-r from-emerald-950 via-[#161616] to-[#1c1810] hover:bg-emerald-900/60 text-[#25D366] border border-[#25D366]/60 font-montserrat text-xs tracking-wider uppercase font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md"
+            title="Centro de Automatización de WhatsApp: Despacho en pestaña única inteligente, lista de difusión y exportación de contactos"
+          >
+            <MessageCircle className="w-4 h-4 text-[#25D366]" />
+            <span>Automatizar WhatsApp</span>
+            {pendingWhatsAppCount > 0 && (
+              <span className="px-1.5 py-0.5 bg-[#25D366] text-black text-[9px] font-mono font-black rounded-full leading-none">
+                {pendingWhatsAppCount}
+              </span>
+            )}
+          </button>
+
           {/* Recordatorio Hoy por WhatsApp */}
           <button
             onClick={() => setIsReminderModalOpen(true)}
@@ -595,7 +621,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             { id: 'all', label: 'Todos' },
             { id: 'confirmed', label: 'Confirmados' },
             { id: 'checkedIn', label: 'Ingresados' },
-            { id: 'pending', label: 'Pendientes' },
+            { id: 'wa-pending', label: `WA Pendiente (${pendingWhatsAppCount})` },
+            { id: 'wa-sent', label: `WA Enviados (${sentWhatsAppCount})` },
+            { id: 'pending', label: 'Pendientes RSVP' },
             { id: 'declined', label: 'No Asisten' },
           ].map((tab) => (
             <button
@@ -640,6 +668,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <th className="py-3 px-4">Invitado / Nombre</th>
                 <th className="py-3 px-3">Categoría & Ubicación</th>
                 <th className="py-3 px-3">Estado RSVP</th>
+                <th className="py-3 px-3">WhatsApp</th>
                 <th className="py-3 px-3">Acompañante</th>
                 <th className="py-3 px-3">Check-in Puerta</th>
                 <th className="py-3 px-4 text-right">Acciones</th>
@@ -786,6 +815,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       )}
                     </td>
 
+                    {/* WhatsApp Status & Quick Dispatch (Single Tab) */}
+                    <td className="py-3.5 px-3">
+                      {guest.whatsappSent ? (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => GuestService.markWhatsAppSent(guest.id, false)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 font-mono text-[10px] font-bold uppercase transition-colors cursor-pointer"
+                            title="Enviado por WhatsApp. Clic para desmarcar."
+                          >
+                            ✓ Enviado
+                          </button>
+                          {guest.whatsappSentAt && (
+                            <div className="text-[9px] font-mono text-white/40 mt-0.5">
+                              {new Date(guest.whatsappSentAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          {guest.phone ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                openWhatsAppInSingleTab(waUrl);
+                                GuestService.markWhatsAppSent(guest.id, true);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#25D366]/15 hover:bg-[#25D366] border border-[#25D366]/40 text-[#25D366] hover:text-black font-mono text-[10px] font-bold uppercase transition-colors cursor-pointer"
+                              title="Enviar por WhatsApp en pestaña única (sin abrir pestañas adicionales)"
+                            >
+                              <MessageCircle className="w-2.5 h-2.5" />
+                              <span>Enviar</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(guest)}
+                              className="text-[9px] text-white/40 hover:text-[#C5A059] font-mono transition-colors cursor-pointer"
+                              title="Sin teléfono registrado. Clic para agregar."
+                            >
+                              + Tel
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+
                     {/* Companions (Inline Editable) */}
                     <td className="py-3.5 px-3 text-neutral-300">
                       <div className="flex items-center gap-1.5">
@@ -880,27 +956,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <Edit2 className="w-3.5 h-3.5" />
                           <span>Editar</span>
                         </button>
-                        {/* WhatsApp Invite Button */}
-                        <a
-                          href={waUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1.5 bg-[#25D366]/20 hover:bg-[#25D366] text-[#25D366] hover:text-black transition-colors rounded-sm"
-                          title="Enviar invitación personalizada por WhatsApp"
+                        {/* WhatsApp Invite Button (Single Tab Reuse) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            openWhatsAppInSingleTab(waUrl);
+                            GuestService.markWhatsAppSent(guest.id, true);
+                          }}
+                          className={`p-1.5 transition-colors rounded-sm cursor-pointer ${
+                            guest.whatsappSent
+                              ? 'bg-emerald-950/80 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/40'
+                              : 'bg-[#25D366]/20 hover:bg-[#25D366] text-[#25D366] hover:text-black'
+                          }`}
+                          title={
+                            guest.whatsappSent
+                              ? `Enviado por WhatsApp (${guest.whatsappSentAt ? new Date(guest.whatsappSentAt).toLocaleTimeString('es-AR') : ''}). Clic para reenviar en pestaña única.`
+                              : 'Enviar invitación por WhatsApp (Pestaña única inteligente)'
+                          }
                         >
                           <Share2 className="w-3.5 h-3.5" />
-                        </a>
+                        </button>
 
-                        {/* WhatsApp Reminder (Hoy es el evento) */}
-                        <a
-                          href={GuestService.getWhatsAppReminderUrl(guest)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1.5 bg-emerald-950/80 hover:bg-emerald-600 text-emerald-400 hover:text-white transition-colors rounded-sm border border-emerald-500/40"
-                          title="Enviar recordatorio matutino del día del evento con QR y horario"
+                        {/* WhatsApp Reminder (Hoy es el evento - Single Tab Reuse) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            openWhatsAppInSingleTab(GuestService.getWhatsAppReminderUrl(guest));
+                            GuestService.markWhatsAppSent(guest.id, true);
+                          }}
+                          className="p-1.5 bg-emerald-950/80 hover:bg-emerald-600 text-emerald-400 hover:text-white transition-colors rounded-sm border border-emerald-500/40 cursor-pointer"
+                          title="Enviar recordatorio del día del evento (Pestaña única inteligente)"
                         >
                           <Bell className="w-3.5 h-3.5" />
-                        </a>
+                        </button>
 
                         {/* Copy Link */}
                         <button
@@ -1482,15 +1570,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         </div>
 
-                        <a
-                          href={reminderUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-montserrat text-[11px] font-bold uppercase tracking-wider rounded-sm flex items-center gap-1.5 transition-colors"
+                        <button
+                          type="button"
+                          onClick={() => {
+                            openWhatsAppInSingleTab(reminderUrl);
+                            GuestService.markWhatsAppSent(guest.id, true);
+                          }}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-montserrat text-[11px] font-bold uppercase tracking-wider rounded-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+                          title="Enviar recordatorio en pestaña única sin abrir pestañas extras"
                         >
                           <MessageCircle className="w-3.5 h-3.5" />
                           <span>Enviar Recordatorio</span>
-                        </a>
+                        </button>
                       </div>
                     );
                   })
@@ -1509,6 +1600,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* MODAL: Automatización & Despacho Masivo WhatsApp */}
+      <WhatsAppAutomationModal
+        isOpen={isWhatsAppAutoModalOpen}
+        onClose={() => setIsWhatsAppAutoModalOpen(false)}
+        guests={guests}
+        onEditGuest={(g) => {
+          setIsWhatsAppAutoModalOpen(false);
+          openEditModal(g);
+        }}
+      />
 
       {/* MODAL: SUBIR LOGO OFICIAL REAL */}
       {isLogoModalOpen && (

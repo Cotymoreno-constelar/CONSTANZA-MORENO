@@ -679,7 +679,16 @@ export class GuestService {
     return { guest: null, tokenOrQuery: extractedToken || trimmed };
   }
 
-  public static getWhatsAppShareUrl(guest: Guest): string {
+  public static getWhatsAppShareUrl(guest: Guest, phoneOverride?: string): string {
+    const cleanPhone = phoneOverride || (guest.phone ? guest.phone.replace(/[^0-9]/g, '') : '');
+    // Check if phone starts with Cordoba or Argentine mobile without 549
+    let formattedPhone = cleanPhone;
+    if (formattedPhone.length === 10) {
+      formattedPhone = '549' + formattedPhone;
+    } else if (formattedPhone.length === 12 && formattedPhone.startsWith('54')) {
+      formattedPhone = '549' + formattedPhone.slice(2);
+    }
+
     const rsvpUrl = this.getRSVPUrl(guest);
     const message = `Estimado/a ${guest.firstName} ${guest.lastName}:\n\n` +
       `DIVO Trajes y Etiqueta tiene el agrado de invitarte a celebrar nuestros 20 Años en el evento:\n` +
@@ -695,14 +704,21 @@ export class GuestService {
       `¡Esperamos contar con tu distinguida presencia!`;
 
     const encoded = encodeURIComponent(message);
-    const cleanPhone = guest.phone ? guest.phone.replace(/[^0-9]/g, '') : '';
-    if (cleanPhone) {
-      return `https://wa.me/${cleanPhone}?text=${encoded}`;
+    if (formattedPhone) {
+      return `https://wa.me/${formattedPhone}?text=${encoded}`;
     }
     return `https://wa.me/?text=${encoded}`;
   }
 
-  public static getWhatsAppReminderUrl(guest: Guest): string {
+  public static getWhatsAppReminderUrl(guest: Guest, phoneOverride?: string): string {
+    const cleanPhone = phoneOverride || (guest.phone ? guest.phone.replace(/[^0-9]/g, '') : '');
+    let formattedPhone = cleanPhone;
+    if (formattedPhone.length === 10) {
+      formattedPhone = '549' + formattedPhone;
+    } else if (formattedPhone.length === 12 && formattedPhone.startsWith('54')) {
+      formattedPhone = '549' + formattedPhone.slice(2);
+    }
+
     const rsvpUrl = this.getRSVPUrl(guest);
     const companionsText = guest.confirmedCompanions > 0
       ? ` (Pase válido para vos y tu acompañante${guest.companionName ? `: ${guest.companionName}` : ''})`
@@ -721,10 +737,41 @@ export class GuestService {
       `Tené a mano tu código QR al ingresar por puerta para una acreditación inmediata. ¡Nos vemos en unas horas! 🥂`;
 
     const encoded = encodeURIComponent(message);
-    const cleanPhone = guest.phone ? guest.phone.replace(/[^0-9]/g, '') : '';
-    if (cleanPhone) {
-      return `https://wa.me/${cleanPhone}?text=${encoded}`;
+    if (formattedPhone) {
+      return `https://wa.me/${formattedPhone}?text=${encoded}`;
     }
     return `https://wa.me/?text=${encoded}`;
+  }
+
+  public static async markWhatsAppSent(guestId: string, sent: boolean = true): Promise<Guest | null> {
+    return this.updateGuest(guestId, {
+      whatsappSent: sent,
+      whatsappSentAt: sent ? new Date().toISOString() : undefined,
+    });
+  }
+
+  public static async markMultipleWhatsAppSent(guestIds: string[], sent: boolean = true): Promise<void> {
+    const now = new Date().toISOString();
+    const guests = this.getLocalGuests();
+    const idSet = new Set(guestIds.map((id) => id.toLowerCase()));
+    const updated = guests.map((g) => {
+      if (idSet.has(g.id.toLowerCase())) {
+        return {
+          ...g,
+          whatsappSent: sent,
+          whatsappSentAt: sent ? now : undefined,
+          updatedAt: now,
+        };
+      }
+      return g;
+    });
+    this.setLocalGuests(updated);
+    try {
+      await fetch('/api/guests/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+    } catch {}
   }
 }
