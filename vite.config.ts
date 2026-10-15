@@ -6,6 +6,7 @@ import {divoApiPlugin} from './server/apiPlugin';
 
 export default defineConfig(() => {
   return {
+    base: './',
     plugins: [react(), tailwindcss(), divoApiPlugin()],
     resolve: {
       alias: {

@@ -501,6 +501,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span>Exportar Excel</span>
           </button>
 
+          {/* Recargar Lista Oficial de Invitados */}
+          <button
+            onClick={async () => {
+              if (window.confirm('¿Deseas recargar la lista oficial completa de 118 invitados de DIVO 20 Años y sincronizar el padrón?')) {
+                const refreshed = await GuestService.resetToOfficialList();
+                setGuests(refreshed);
+              }
+            }}
+            className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-amber-300 border border-amber-500/40 font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+            title="Recargar la lista oficial de 118 invitados de DIVO 20 Años (útil si el navegador guardó una versión anterior en caché)"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+            <span>Recargar Lista Oficial</span>
+          </button>
+
           {/* Vaciar Padrón */}
           {guests.length > 0 && (
             <button

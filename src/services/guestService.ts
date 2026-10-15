@@ -1,8 +1,18 @@
 import { Guest, EventStats, RSVPStatus } from '../types/guest';
 import { INITIAL_GUESTS } from '../data/initialGuests';
 
-const STORAGE_KEY = 'divo_20_guests_data_v3';
-const LEGACY_STORAGE_KEYS = ['divo_20_guests_data_v1', 'divo_20_guests_data_v2'];
+const STORAGE_KEY = 'divo_20_guests_data_v10_prod';
+const LEGACY_STORAGE_KEYS = [
+  'divo_20_guests_data_v1',
+  'divo_20_guests_data_v2',
+  'divo_20_guests_data_v3',
+  'divo_20_guests_data_v4',
+  'divo_20_guests_data_v5',
+  'divo_20_guests_data_v6',
+  'divo_20_guests_data_v7',
+  'divo_20_guests_data_v8',
+  'divo_20_guests_data_v9'
+];
 const QR_MODE_STORAGE_KEY = 'divo_20_qr_mode_v1';
 const CUSTOM_DOMAIN_STORAGE_KEY = 'divo_20_custom_domain_v1';
 
@@ -46,21 +56,33 @@ export class GuestService {
   private static eventSource: EventSource | null = null;
   private static isInitialized = false;
 
-  private static getLocalGuests(): Guest[] {
+  public static getLocalGuests(): Guest[] {
     try {
       LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
       const data = localStorage.getItem(STORAGE_KEY);
       if (data) {
         const parsed: Guest[] = JSON.parse(data);
-        if (Array.isArray(parsed)) {
-          return parsed;
+        if (Array.isArray(parsed) && parsed.length >= 80) {
+          const hasOfficialGuest = parsed.some(
+            (g) =>
+              (g.lastName && g.lastName.toUpperCase().includes('QUALITY')) ||
+              (g.firstName && g.firstName.toUpperCase().includes('QUALITY')) ||
+              (g.firstName && g.firstName.toLowerCase().includes('bainotti'))
+          );
+          if (hasOfficialGuest) {
+            return parsed;
+          }
         }
       }
     } catch (e) {
       console.warn('Error reading from localStorage', e);
     }
-    // Initialize with default
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_GUESTS));
+    // Force initialize with new official list
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_GUESTS));
+    } catch {
+      // ignore
+    }
     return INITIAL_GUESTS;
   }
 
@@ -135,7 +157,7 @@ export class GuestService {
       const response = await fetch('/api/guests');
       if (response.ok) {
         const serverGuests = await response.json();
-        if (Array.isArray(serverGuests)) {
+        if (Array.isArray(serverGuests) && serverGuests.length >= 80) {
           this.setLocalGuests(serverGuests);
           return serverGuests;
         }
@@ -143,7 +165,38 @@ export class GuestService {
     } catch {
       // Offline / dev fallback
     }
+
+    // Static hosting fallback (for GitHub Pages / Vercel static)
+    try {
+      const staticResponse = await fetch('./data/guests.json');
+      if (staticResponse.ok) {
+        const staticGuests = await staticResponse.json();
+        if (Array.isArray(staticGuests) && staticGuests.length >= 80) {
+          if (local.length < staticGuests.length) {
+            this.setLocalGuests(staticGuests);
+            return staticGuests;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     return local;
+  }
+
+  public static async resetToOfficialList(): Promise<Guest[]> {
+    this.setLocalGuests(INITIAL_GUESTS);
+    try {
+      await fetch('/api/guests/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guests: INITIAL_GUESTS, replaceAll: true }),
+      });
+    } catch {
+      // local already set
+    }
+    return INITIAL_GUESTS;
   }
 
   public static async getGuestByIdOrToken(idOrToken: string): Promise<Guest | null> {
