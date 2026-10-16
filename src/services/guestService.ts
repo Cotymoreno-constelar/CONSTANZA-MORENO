@@ -1,7 +1,7 @@
 import { Guest, EventStats, RSVPStatus } from '../types/guest';
 import { INITIAL_GUESTS } from '../data/initialGuests';
 
-const STORAGE_KEY = 'divo_20_guests_data_v10_prod';
+const STORAGE_KEY = 'divo_20_guests_data_v11_prod';
 const LEGACY_STORAGE_KEYS = [
   'divo_20_guests_data_v1',
   'divo_20_guests_data_v2',
@@ -11,7 +11,8 @@ const LEGACY_STORAGE_KEYS = [
   'divo_20_guests_data_v6',
   'divo_20_guests_data_v7',
   'divo_20_guests_data_v8',
-  'divo_20_guests_data_v9'
+  'divo_20_guests_data_v9',
+  'divo_20_guests_data_v10_prod'
 ];
 const QR_MODE_STORAGE_KEY = 'divo_20_qr_mode_v1';
 const CUSTOM_DOMAIN_STORAGE_KEY = 'divo_20_custom_domain_v1';
