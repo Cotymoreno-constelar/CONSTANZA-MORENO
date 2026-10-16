@@ -1,5 +1,6 @@
 import { Guest, EventStats, RSVPStatus } from '../types/guest';
 import { INITIAL_GUESTS } from '../data/initialGuests';
+import { RemoteStore } from './remoteStore';
 
 const STORAGE_KEY = 'divo_20_guests_data_v11_prod';
 const LEGACY_STORAGE_KEYS = [
@@ -14,6 +15,7 @@ const LEGACY_STORAGE_KEYS = [
   'divo_20_guests_data_v9',
   'divo_20_guests_data_v10_prod'
 ];
+const REMOTE_CACHE_FLAG = 'divo_20_remote_cache_v1';
 const QR_MODE_STORAGE_KEY = 'divo_20_qr_mode_v1';
 const CUSTOM_DOMAIN_STORAGE_KEY = 'divo_20_custom_domain_v1';
 
@@ -63,6 +65,9 @@ export class GuestService {
       const data = localStorage.getItem(STORAGE_KEY);
       if (data) {
         const parsed: Guest[] = JSON.parse(data);
+        if (Array.isArray(parsed) && RemoteStore.enabled && localStorage.getItem(REMOTE_CACHE_FLAG) === '1') {
+          return parsed;
+        }
         if (Array.isArray(parsed) && parsed.length >= 80) {
           const hasOfficialGuest = parsed.some(
             (g) =>
@@ -85,6 +90,37 @@ export class GuestService {
       // ignore
     }
     return INITIAL_GUESTS;
+  }
+
+  private static remoteReady = false;
+
+  private static async remoteWrite(fn: () => Promise<void>): Promise<void> {
+    if (!RemoteStore.enabled) return;
+    try {
+      await fn();
+    } catch (e) {
+      console.warn('No se pudo guardar en Supabase', e);
+    }
+  }
+
+  /** Trae la lista compartida desde Supabase; siembra la lista oficial solo la primera vez. */
+  private static async loadRemote(): Promise<Guest[] | null> {
+    if (!RemoteStore.enabled) return null;
+    let remote = await RemoteStore.fetchAll();
+    if (remote === null) return null; // sin conexión o tabla inexistente
+    if (remote.length === 0 && !(await RemoteStore.isSeeded())) {
+      try {
+        await RemoteStore.upsert(INITIAL_GUESTS);
+        await RemoteStore.markSeeded();
+        remote = INITIAL_GUESTS;
+      } catch (e) {
+        console.warn('No se pudo sembrar la lista inicial', e);
+        return null;
+      }
+    }
+    this.remoteReady = true;
+    try { localStorage.setItem(REMOTE_CACHE_FLAG, '1'); } catch {}
+    return remote;
   }
 
   private static setLocalGuests(guests: Guest[]): void {
@@ -112,9 +148,23 @@ export class GuestService {
 
   private static initRealtime(): void {
     this.isInitialized = true;
+    if (typeof window !== 'undefined' && RemoteStore.enabled) {
+      let lastSig = '';
+      const poll = async () => {
+        if (typeof document !== 'undefined' && document.hidden) return;
+        const remote = await this.loadRemote();
+        if (!remote) return;
+        const sig = JSON.stringify(remote.map((g) => [g.id, g.updatedAt]).sort());
+        if (sig !== lastSig) {
+          lastSig = sig;
+          this.setLocalGuests(remote);
+        }
+      };
+      setInterval(poll, 5000);
+    }
     try {
       // Connect to Server-Sent Events if available
-      if (typeof window !== 'undefined' && window.EventSource) {
+      if (typeof window !== 'undefined' && window.EventSource && !RemoteStore.enabled) {
         this.eventSource = new EventSource('/api/events');
         this.eventSource.onmessage = (event) => {
           try {
@@ -153,6 +203,11 @@ export class GuestService {
   }
 
   public static async getAllGuests(): Promise<Guest[]> {
+    const remote = await this.loadRemote();
+    if (remote) {
+      this.setLocalGuests(remote);
+      return remote;
+    }
     const local = this.getLocalGuests();
     try {
       const response = await fetch('/api/guests');
@@ -188,6 +243,7 @@ export class GuestService {
 
   public static async resetToOfficialList(): Promise<Guest[]> {
     this.setLocalGuests(INITIAL_GUESTS);
+    await this.remoteWrite(() => RemoteStore.replaceAll(INITIAL_GUESTS));
     try {
       await fetch('/api/guests/bulk', {
         method: 'POST',
@@ -211,6 +267,15 @@ export class GuestService {
     );
 
     if (found) return found;
+
+    if (RemoteStore.enabled) {
+      const direct = await RemoteStore.findByIdOrToken(idOrToken.trim());
+      if (direct) {
+        const current = this.getLocalGuests();
+        this.setLocalGuests([direct, ...current.filter((g) => g.id !== direct.id)]);
+        return direct;
+      }
+    }
 
     // Direct API fallback
     try {
@@ -255,6 +320,13 @@ export class GuestService {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    if (RemoteStore.enabled) {
+      await this.remoteWrite(() => RemoteStore.upsert([newGuest]));
+      const current = this.getLocalGuests();
+      this.setLocalGuests([newGuest, ...current.filter((g) => g.id !== newGuest.id)]);
+      return newGuest;
+    }
 
     try {
       const response = await fetch('/api/guests', {
@@ -321,6 +393,11 @@ export class GuestService {
     const updated = replaceAll ? [...newGuests] : [...newGuests, ...current];
     this.setLocalGuests(updated);
 
+    if (RemoteStore.enabled) {
+      await this.remoteWrite(() => (replaceAll ? RemoteStore.replaceAll(newGuests) : RemoteStore.upsert(newGuests)));
+      return newGuests;
+    }
+
     try {
       await fetch('/api/guests/bulk', {
         method: 'POST',
@@ -336,6 +413,7 @@ export class GuestService {
 
   public static async clearAllGuests(): Promise<void> {
     this.setLocalGuests([]);
+    await this.remoteWrite(() => RemoteStore.clear());
     try {
       await fetch('/api/guests/clear', { method: 'POST' });
     } catch {
@@ -354,6 +432,13 @@ export class GuestService {
       updatedAt: new Date().toISOString(),
     };
 
+    await this.remoteWrite(() => RemoteStore.upsert([updatedGuest]));
+    if (RemoteStore.enabled) {
+      const nextRemote = [...current];
+      nextRemote[index] = updatedGuest;
+      this.setLocalGuests(nextRemote);
+      return updatedGuest;
+    }
     try {
       await fetch(`/api/guests/${id}`, {
         method: 'PUT',
@@ -380,8 +465,15 @@ export class GuestService {
       congratulationMessage?: string;
     }
   ): Promise<Guest> {
-    const guests = this.getLocalGuests();
-    const guest = guests.find((g) => g.id === idOrToken || g.token === idOrToken);
+    let guests = this.getLocalGuests();
+    let guest = guests.find((g) => g.id === idOrToken || g.token === idOrToken);
+    if (RemoteStore.enabled) {
+      const fresh = await RemoteStore.findByIdOrToken(idOrToken);
+      if (fresh) {
+        guest = fresh;
+        guests = [fresh, ...guests.filter((g) => g.id !== fresh.id)];
+      }
+    }
     if (!guest) throw new Error('Invitación no válida');
 
     const updatedGuest: Guest = {
@@ -395,6 +487,11 @@ export class GuestService {
       updatedAt: new Date().toISOString(),
     };
 
+    await this.remoteWrite(() => RemoteStore.upsert([updatedGuest]));
+    if (RemoteStore.enabled) {
+      this.setLocalGuests(guests.map((g) => (g.id === guest!.id ? updatedGuest : g)));
+      return updatedGuest;
+    }
     try {
       await fetch(`/api/guests/${guest.id}/rsvp`, {
         method: 'POST',
@@ -415,8 +512,15 @@ export class GuestService {
     doorStaffName: string = 'Acceso Puerta Principal',
     forceAdmit: boolean = false
   ): Promise<{ success: boolean; guest: Guest; alreadyCheckedIn: boolean; previousTime?: string }> {
-    const guests = this.getLocalGuests();
-    const guest = guests.find((g) => g.id === idOrToken || g.token === idOrToken);
+    let guests = this.getLocalGuests();
+    let guest = guests.find((g) => g.id === idOrToken || g.token === idOrToken);
+    if (RemoteStore.enabled) {
+      const fresh = await RemoteStore.findByIdOrToken(idOrToken);
+      if (fresh) {
+        guest = fresh;
+        guests = [fresh, ...guests.filter((g) => g.id !== fresh.id)];
+      }
+    }
     if (!guest) throw new Error('Código QR no reconocido en la base de datos');
 
     if (guest.checkedIn && !forceAdmit) {
@@ -438,6 +542,11 @@ export class GuestService {
       updatedAt: new Date().toISOString(),
     };
 
+    await this.remoteWrite(() => RemoteStore.upsert([updatedGuest]));
+    if (RemoteStore.enabled) {
+      this.setLocalGuests(guests.map((g) => (g.id === guest!.id ? updatedGuest : g)));
+      return { success: true, guest: updatedGuest, alreadyCheckedIn: false };
+    }
     try {
       await fetch(`/api/guests/${guest.id}/checkin`, {
         method: 'POST',
@@ -471,8 +580,9 @@ export class GuestService {
       updatedAt: new Date().toISOString(),
     };
 
+    await this.remoteWrite(() => RemoteStore.upsert([updatedGuest]));
     try {
-      await fetch(`/api/guests/${guestId}/undo-checkin`, { method: 'POST' });
+      if (!RemoteStore.enabled) await fetch(`/api/guests/${guestId}/undo-checkin`, { method: 'POST' });
     } catch {
       // fallback
     }
@@ -483,8 +593,9 @@ export class GuestService {
   }
 
   public static async deleteGuest(guestId: string): Promise<void> {
+    await this.remoteWrite(() => RemoteStore.remove(guestId));
     try {
-      await fetch(`/api/guests/${guestId}`, { method: 'DELETE' });
+      if (!RemoteStore.enabled) await fetch(`/api/guests/${guestId}`, { method: 'DELETE' });
     } catch {
       // fallback
     }
@@ -496,8 +607,9 @@ export class GuestService {
   public static resetToDefault(): Guest[] {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_GUESTS));
     this.notifyListeners(INITIAL_GUESTS);
+    void this.remoteWrite(() => RemoteStore.replaceAll(INITIAL_GUESTS));
     try {
-      fetch('/api/guests/reset', { method: 'POST' });
+      if (!RemoteStore.enabled) fetch('/api/guests/reset', { method: 'POST' });
     } catch {
       // fallback
     }
@@ -721,11 +833,15 @@ export class GuestService {
 
       const next = [hydrated, ...this.getLocalGuests()];
       this.setLocalGuests(next);
-      fetch('/api/guests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(hydrated),
-      }).catch(() => {});
+      if (RemoteStore.enabled) {
+        void this.remoteWrite(() => RemoteStore.upsert([hydrated]));
+      } else {
+        fetch('/api/guests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(hydrated),
+        }).catch(() => {});
+      }
 
       return { guest: hydrated, tokenOrQuery: hydrated.token };
     }
@@ -820,6 +936,10 @@ export class GuestService {
       return g;
     });
     this.setLocalGuests(updated);
+    if (RemoteStore.enabled) {
+      await this.remoteWrite(() => RemoteStore.upsert(updated.filter((g) => idSet.has(g.id.toLowerCase()))));
+      return;
+    }
     try {
       await fetch('/api/guests/bulk', {
         method: 'POST',
