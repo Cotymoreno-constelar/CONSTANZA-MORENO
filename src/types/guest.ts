@@ -1,6 +1,8 @@
 export type RSVPStatus = 'pending' | 'confirmed' | 'declined';
 export type GuestCategory = 'VIP' | 'Prensa' | 'Staff' | 'Familia & Amigos' | 'Cliente Distinguido' | 'Invitado General';
 
+export type GuestSender = 'Coty' | 'Yasmin' | 'Sin asignar';
+
 export interface Guest {
   id: string;
   token: string;
@@ -30,6 +32,9 @@ export interface Guest {
   whatsappSent?: boolean;
   whatsappSentAt?: string;
   whatsappNotes?: string;
+
+  // Quién envía (Coty / Yasmin)
+  sender?: GuestSender | string;
 
   createdAt: string;
   updatedAt: string;

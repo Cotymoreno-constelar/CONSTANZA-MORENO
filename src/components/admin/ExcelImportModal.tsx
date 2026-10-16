@@ -12,7 +12,7 @@ import {
   Sparkles,
   Users
 } from 'lucide-react';
-import { Guest, GuestCategory, RSVPStatus } from '../../types/guest';
+import { Guest, GuestCategory, RSVPStatus, GuestSender } from '../../types/guest';
 import { GuestService } from '../../services/guestService';
 
 interface ParsedRow {
@@ -27,6 +27,7 @@ interface ParsedRow {
   tableOrSeat: string;
   status: RSVPStatus;
   companionName: string;
+  sender: GuestSender;
   isDuplicate: boolean;
 }
 
@@ -135,6 +136,7 @@ export function exportGuestsToExcel(guests: Guest[]) {
     'ID Invitación': g.id,
     'Nombre': g.firstName,
     'Apellido': g.lastName,
+    'Quién Envía': g.sender || 'Sin asignar',
     'Categoría': g.category,
     'Teléfono / WhatsApp': g.phone || '',
     'Email': g.email || '',
@@ -168,6 +170,7 @@ export function exportGuestsToExcel(guests: Guest[]) {
     { wch: 20 },
     { wch: 18 },
     { wch: 18 },
+    { wch: 15 },
     { wch: 20 },
     { wch: 18 },
     { wch: 25 },
@@ -205,6 +208,7 @@ export function downloadExcelTemplate() {
     {
       'Nombre': 'Agustín',
       'Apellido': 'Cremona',
+      'Quién Envía': 'Coty',
       'Teléfono / WhatsApp': '+5493515550101',
       'Email': 'agustin@ejemplo.com',
       'Categoría': 'VIP',
@@ -216,6 +220,7 @@ export function downloadExcelTemplate() {
     {
       'Nombre': 'Martina',
       'Apellido': 'Sánchez',
+      'Quién Envía': 'Yasmin',
       'Teléfono / WhatsApp': '+5493515550202',
       'Email': 'martina@prensa.com',
       'Categoría': 'Prensa',
@@ -227,6 +232,7 @@ export function downloadExcelTemplate() {
     {
       'Nombre': 'Federico',
       'Apellido': 'Almada',
+      'Quién Envía': 'Coty',
       'Teléfono / WhatsApp': '+5493515550303',
       'Email': 'fede@correo.com',
       'Categoría': 'Cliente Distinguido',
@@ -242,6 +248,7 @@ export function downloadExcelTemplate() {
   ws['!cols'] = [
     { wch: 18 },
     { wch: 18 },
+    { wch: 16 },
     { wch: 22 },
     { wch: 26 },
     { wch: 22 },
@@ -267,6 +274,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   const [pasteText, setPasteText] = useState('');
   const [defaultCategory, setDefaultCategory] = useState<GuestCategory>('Invitado General');
   const [defaultCompanions, setDefaultCompanions] = useState<number>(1);
+  const [defaultSender, setDefaultSender] = useState<GuestSender>('Sin asignar');
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [replaceExisting, setReplaceExisting] = useState(false);
@@ -350,6 +358,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     let idxTable = -1;
     let idxStatus = -1;
     let idxCompanionName = -1;
+    let idxSender = -1;
 
     if (hasHeader) {
       firstRowNorm.forEach((col, i) => {
@@ -378,6 +387,15 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
           if (idxEmail === -1) idxEmail = i;
         } else if (col.includes('categ') || col.includes('tipo') || col.includes('grupo') || col.includes('rol')) {
           if (idxCategory === -1) idxCategory = i;
+        } else if (
+          col.includes('envia') ||
+          col.includes('emisor') ||
+          col.includes('sender') ||
+          col.includes('responsable') ||
+          col.includes('coty') ||
+          col.includes('yasmin')
+        ) {
+          if (idxSender === -1) idxSender = i;
         } else if (col.includes('acompanante') && (col.includes('nombre') || col.includes('invitado'))) {
           if (idxCompanionName === -1) idxCompanionName = i;
         } else if (
@@ -503,6 +521,15 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       const status = matchStatus(rawStatus);
       const isDuplicate = checkIsDuplicate(firstName, lastName, phone, email);
 
+      let rawSender = hasHeader ? getVal(idxSender) : '';
+      let sender: GuestSender = defaultSender;
+      if (rawSender) {
+        const normS = rawSender.toLowerCase().trim();
+        if (normS.includes('coty')) sender = 'Coty';
+        else if (normS.includes('yasmin') || normS.includes('yazmin')) sender = 'Yasmin';
+        else if (normS === 'sin asignar') sender = 'Sin asignar';
+      }
+
       result.push({
         tempId: `row-${index}-${Math.random().toString(36).slice(2, 7)}`,
         selected: !isDuplicate || !skipDuplicates,
@@ -515,6 +542,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         tableOrSeat,
         status,
         companionName,
+        sender,
         isDuplicate,
       });
     });
@@ -621,6 +649,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
           tableOrSeat: r.tableOrSeat.trim() || undefined,
           status: r.status,
           companionName: r.companionName.trim() || undefined,
+          sender: r.sender === 'Sin asignar' ? undefined : r.sender,
         })),
         replaceExisting
       );
@@ -786,6 +815,18 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                     <option value={0}>0 (Solo titular)</option>
                     <option value={1}>+1 Acompañante</option>
                     <option value={2}>+2 Acompañantes</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-white/50 font-montserrat text-[11px]">Quién envía:</span>
+                  <select
+                    value={defaultSender}
+                    onChange={(e) => setDefaultSender(e.target.value as GuestSender)}
+                    className="bg-[#101010] border border-white/20 px-2.5 py-1 text-xs font-montserrat font-bold text-white focus:outline-none focus:border-[#C5A059]"
+                  >
+                    <option value="Sin asignar">Sin asignar</option>
+                    <option value="Coty" className="text-rose-300">Coty</option>
+                    <option value="Yasmin" className="text-sky-300">Yasmin</option>
                   </select>
                 </div>
               </div>
@@ -962,6 +1003,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                     </th>
                     <th className="py-2.5 px-2">Nombre *</th>
                     <th className="py-2.5 px-2">Apellido</th>
+                    <th className="py-2.5 px-2">Quién Envía</th>
                     <th className="py-2.5 px-2">Teléfono / WhatsApp</th>
                     <th className="py-2.5 px-2">Categoría</th>
                     <th className="py-2.5 px-2 w-20">Acomp.</th>
@@ -1014,6 +1056,29 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                           }
                           className="w-full bg-[#181818] border border-white/15 px-2 py-1 text-xs text-white focus:border-[#C5A059] focus:outline-none"
                         />
+                      </td>
+                      <td className="py-2 px-2">
+                        <select
+                          value={row.sender}
+                          onChange={(e) =>
+                            handleUpdateRowField(
+                              row.tempId,
+                              'sender',
+                              e.target.value as GuestSender
+                            )
+                          }
+                          className={`w-full px-1.5 py-1 text-xs font-montserrat font-bold uppercase border focus:outline-none cursor-pointer ${
+                            row.sender === 'Coty'
+                              ? 'bg-rose-950/70 border-rose-400/50 text-rose-300'
+                              : row.sender === 'Yasmin'
+                              ? 'bg-sky-950/70 border-sky-400/50 text-sky-300'
+                              : 'bg-[#181818] border-white/15 text-white/50'
+                          }`}
+                        >
+                          <option value="Sin asignar" className="bg-[#181818] text-white/50">Sin asignar</option>
+                          <option value="Coty" className="bg-[#181818] text-rose-300 font-bold">Coty</option>
+                          <option value="Yasmin" className="bg-[#181818] text-sky-300 font-bold">Yasmin</option>
+                        </select>
                       </td>
                       <td className="py-2 px-2">
                         <input

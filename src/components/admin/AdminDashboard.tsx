@@ -33,7 +33,7 @@ import {
   Zap,
   KeyRound
 } from 'lucide-react';
-import { Guest, EventStats, GuestCategory, RSVPStatus } from '../../types/guest';
+import { Guest, EventStats, GuestCategory, RSVPStatus, GuestSender } from '../../types/guest';
 import { GuestService, calculateStats } from '../../services/guestService';
 import { InvitationCard } from '../invitation/InvitationCard';
 import { DivoLogo, getCustomLogoUrl, setCustomLogoUrl } from '../brand/DivoLogo';
@@ -62,6 +62,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [searchFilter, setSearchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [senderFilter, setSenderFilter] = useState<string>('all');
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -82,6 +83,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newCategory, setNewCategory] = useState<GuestCategory>('Invitado General');
   const [newTable, setNewTable] = useState('');
   const [newCompanionsAllowed, setNewCompanionsAllowed] = useState(1);
+  const [newSender, setNewSender] = useState<GuestSender>('Sin asignar');
 
   // Edit Guest Form
   const [editFirstName, setEditFirstName] = useState('');
@@ -98,6 +100,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editCongratulationMessage, setEditCongratulationMessage] = useState('');
   const [editCheckedIn, setEditCheckedIn] = useState(false);
   const [editCheckInNotes, setEditCheckInNotes] = useState('');
+  const [editSender, setEditSender] = useState<GuestSender>('Sin asignar');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const openEditModal = (guest: Guest) => {
@@ -116,6 +119,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditCongratulationMessage(guest.congratulationMessage || '');
     setEditCheckedIn(Boolean(guest.checkedIn));
     setEditCheckInNotes(guest.checkInNotes || '');
+    setEditSender((guest.sender as GuestSender) || 'Sin asignar');
   };
 
   const handleSaveEditedGuest = async (e: React.FormEvent) => {
@@ -140,6 +144,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         checkedIn: editCheckedIn,
         checkedInAt: editCheckedIn ? editingGuest.checkedInAt || new Date().toISOString() : undefined,
         checkInNotes: editCheckInNotes.trim() || undefined,
+        sender: editSender === 'Sin asignar' ? undefined : editSender,
       });
 
       if (selectedGuestForCard?.id === updated.id) {
@@ -163,6 +168,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     (g) => !g.whatsappSent && cleanAndFormatPhoneNumber(g.phone).isValid
   ).length;
   const sentWhatsAppCount = guests.filter((g) => g.whatsappSent).length;
+  const cotyCount = guests.filter((g) => g.sender === 'Coty').length;
+  const yasminCount = guests.filter((g) => g.sender === 'Yasmin').length;
+  const unassignedSenderCount = guests.filter((g) => !g.sender || g.sender === 'Sin asignar').length;
 
   // Filtering
   const filteredGuests = guests.filter((g) => {
@@ -183,7 +191,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const matchesCategory =
       categoryFilter === 'all' || g.category === categoryFilter;
 
-    return matchesSearch && matchesStatus && matchesCategory;
+    const matchesSender =
+      senderFilter === 'all' ||
+      (senderFilter === 'Coty' && g.sender === 'Coty') ||
+      (senderFilter === 'Yasmin' && g.sender === 'Yasmin') ||
+      (senderFilter === 'unassigned' && (!g.sender || g.sender === 'Sin asignar'));
+
+    return matchesSearch && matchesStatus && matchesCategory && matchesSender;
   });
 
   const handleAddSingleGuest = async (e: React.FormEvent) => {
@@ -206,6 +220,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       category: newCategory,
       tableOrSeat: newTable.trim() || undefined,
       companionsAllowed: newCompanionsAllowed,
+      sender: newSender === 'Sin asignar' ? undefined : newSender,
     });
 
     // Reset form
@@ -215,6 +230,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setNewPhone('');
     setNewTable('');
     setNewCompanionsAllowed(1);
+    setNewSender('Sin asignar');
     setIsAddModalOpen(false);
     // Open the generated QR & Invitation Card immediately
     setSelectedGuestForCard(created);
@@ -684,7 +700,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="bg-[#1c1c1c] border border-white/15 px-2.5 py-1.5 text-xs text-[#FAF7F2] font-montserrat focus:outline-none focus:border-[#C5A059]"
+            className="bg-[#1c1c1c] border border-white/15 px-2.5 py-1.5 text-xs text-[#FAF7F2] font-montserrat focus:outline-none focus:border-[#C5A059] cursor-pointer"
           >
             <option value="all">Todas las categorías</option>
             <option value="VIP">VIP</option>
@@ -693,6 +709,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <option value="Cliente Distinguido">Cliente Distinguido</option>
             <option value="Familia & Amigos">Familia & Amigos</option>
             <option value="Invitado General">Invitado General</option>
+          </select>
+        </div>
+
+        {/* Sender Filter: Coty / Yasmin */}
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <span className="text-[11px] text-white/50 font-montserrat uppercase hidden sm:inline">Envía:</span>
+          <select
+            value={senderFilter}
+            onChange={(e) => setSenderFilter(e.target.value)}
+            className={`border px-2.5 py-1.5 text-xs font-montserrat font-bold uppercase focus:outline-none cursor-pointer transition-colors ${
+              senderFilter === 'Coty'
+                ? 'bg-rose-950/70 border-rose-400/60 text-rose-300'
+                : senderFilter === 'Yasmin'
+                ? 'bg-sky-950/70 border-sky-400/60 text-sky-300'
+                : senderFilter === 'unassigned'
+                ? 'bg-amber-950/40 border-amber-500/40 text-amber-300'
+                : 'bg-[#1c1c1c] border-white/15 text-[#FAF7F2] focus:border-[#C5A059]'
+            }`}
+          >
+            <option value="all" className="bg-[#141414] text-white">Todos los emisores</option>
+            <option value="Coty" className="bg-[#141414] text-rose-300">Coty ({cotyCount})</option>
+            <option value="Yasmin" className="bg-[#141414] text-sky-300">Yasmin ({yasminCount})</option>
+            <option value="unassigned" className="bg-[#141414] text-amber-300">Sin asignar ({unassignedSenderCount})</option>
           </select>
         </div>
       </div>
