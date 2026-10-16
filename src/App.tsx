@@ -12,10 +12,14 @@ import {
   ExternalLink,
   ChevronDown,
   Camera,
-  Flame
+  Flame,
+  Lock,
+  LogOut,
+  KeyRound
 } from 'lucide-react';
 import { Guest } from './types/guest';
 import { GuestService } from './services/guestService';
+import { AuthService } from './services/authService';
 import { INITIAL_GUESTS } from './data/initialGuests';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { DoorScanner } from './components/scanner/DoorScanner';
@@ -26,6 +30,8 @@ import { DivoLogo } from './components/brand/DivoLogo';
 import { GuestUploadView } from './components/liveWall/GuestUploadView';
 import { ProjectionScreen } from './components/liveWall/ProjectionScreen';
 import { LiveWallAdmin } from './components/liveWall/LiveWallAdmin';
+import { AdminLoginView } from './components/admin/AdminLoginView';
+import { ChangePasswordModal } from './components/admin/ChangePasswordModal';
 
 type ViewTab = 'admin' | 'scanner' | 'card-preview' | 'rsvp' | 'stage' | 'muro-admin' | 'muro-invitado' | 'pantalla-proyector';
 
@@ -116,6 +122,9 @@ export default function App() {
   );
   const [isLoadingToken, setIsLoadingToken] = useState(Boolean(initialRoute.token));
   const [urlToken, setUrlToken] = useState<string | null>(initialRoute.token);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => AuthService.isAuthenticated());
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
+  const [passwordToast, setPasswordToast] = useState<string | null>(null);
 
   // Load guests and handle URL ?guest=... parameter
   useEffect(() => {
@@ -285,33 +294,89 @@ export default function App() {
     );
   }
 
+  // Verificar si la pestaña actual es protegida (requiere autenticación de organizador)
+  const isProtectedTab = ['admin', 'scanner', 'card-preview', 'stage', 'muro-admin'].includes(activeTab);
+
+  if (!isAdminAuthenticated && isProtectedTab) {
+    return (
+      <>
+        <AdminLoginView
+          onSuccess={() => setIsAdminAuthenticated(true)}
+          onGoToGuestMode={() => {
+            setIsGuestModeFromUrl(true);
+            setActiveTab('rsvp');
+          }}
+        />
+        <ChangePasswordModal
+          isOpen={isChangePasswordModalOpen}
+          onClose={() => setIsChangePasswordModalOpen(false)}
+          onSuccessToast={(msg) => {
+            setPasswordToast(msg);
+            setTimeout(() => setPasswordToast(null), 3000);
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#FAF7F2] flex flex-col justify-between selection:bg-[#C5A059] selection:text-black">
       {/* Top Main Navigation Bar */}
       <header className="sticky top-0 z-40 bg-[#0d0d0d]/95 backdrop-blur-md border-b border-[#C5A059]/30 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-col md:flex-row items-center justify-between gap-3">
-          {/* Brand Logo & Event Badge */}
-          <div
-            onClick={() => setActiveTab('admin')}
-            className="flex items-center gap-3 cursor-pointer group select-none"
-          >
-            <DivoLogo size="sm" showSubtext={false} showTapeMeasure={false} />
-            <div className="hidden sm:flex flex-col border-l border-[#C5A059]/30 pl-3">
-              <span className="font-montserrat text-[10px] tracking-[0.25em] text-[#C5A059] uppercase font-bold">
-                VISTIENDO MOMENTOS
-              </span>
-              <span className="font-montserrat text-[9px] text-white/60">
-                22 Oct 2026 • Capilla Buen Pastor, Cba
-              </span>
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-2.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 sm:gap-3">
+          {/* Brand Logo & Event Badge & Mobile Security Controls */}
+          <div className="flex items-center justify-between gap-3">
+            <div
+              onClick={() => setActiveTab('admin')}
+              className="flex items-center gap-2.5 cursor-pointer group select-none"
+            >
+              <DivoLogo size="sm" showSubtext={false} showTapeMeasure={false} />
+              <div className="flex flex-col border-l border-[#C5A059]/30 pl-2.5">
+                <span className="font-montserrat text-[10px] tracking-[0.25em] text-[#C5A059] uppercase font-bold">
+                  VISTIENDO MOMENTOS
+                </span>
+                <span className="font-montserrat text-[9px] text-white/60">
+                  22 Oct 2026 • Buen Pastor
+                </span>
+              </div>
             </div>
+
+            {/* Mobile Clave & Salir on top right */}
+            {isAdminAuthenticated && (
+              <div className="flex items-center gap-1.5 md:hidden">
+                <button
+                  type="button"
+                  onClick={() => setIsChangePasswordModalOpen(true)}
+                  className="py-1 px-2 text-[10px] font-montserrat uppercase text-[#C5A059] border border-[#C5A059]/40 flex items-center gap-1"
+                  title="Cambiar clave"
+                >
+                  <KeyRound className="w-3 h-3" />
+                  <span>Clave</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('¿Cerrar sesión de administración?')) {
+                      AuthService.logout();
+                      setIsAdminAuthenticated(false);
+                    }
+                  }}
+                  className="py-1 px-2 text-[10px] font-montserrat uppercase text-rose-300 border border-rose-500/30 flex items-center gap-1"
+                  title="Cerrar sesión"
+                >
+                  <LogOut className="w-3 h-3" />
+                  <span>Salir</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Navigation Tabs */}
-          <nav className="flex items-center gap-1 sm:gap-2 overflow-x-auto max-w-full pb-1 sm:pb-0">
+          {/* Navigation Tabs (Smooth touch scroll on mobile) */}
+          <nav className="flex items-center gap-1 sm:gap-2 overflow-x-auto max-w-full pb-1 sm:pb-0 scrollbar-none whitespace-nowrap -mx-1 px-1">
             {/* Panel Admin */}
             <button
               onClick={() => setActiveTab('admin')}
-              className={`py-2 px-3 sm:px-4 text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`py-1.5 sm:py-2 px-2.5 sm:px-4 text-[11px] sm:text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
                 activeTab === 'admin'
                   ? 'bg-[#C5A059] text-black shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
@@ -324,7 +389,7 @@ export default function App() {
             {/* Escáner Puerta */}
             <button
               onClick={() => setActiveTab('scanner')}
-              className={`py-2 px-3 sm:px-4 text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`py-1.5 sm:py-2 px-2.5 sm:px-4 text-[11px] sm:text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
                 activeTab === 'scanner'
                   ? 'bg-[#C5A059] text-black shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
@@ -337,7 +402,7 @@ export default function App() {
             {/* Tarjeta Digital */}
             <button
               onClick={() => setActiveTab('card-preview')}
-              className={`py-2 px-3 sm:px-4 text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`py-1.5 sm:py-2 px-2.5 sm:px-4 text-[11px] sm:text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
                 activeTab === 'card-preview'
                   ? 'bg-[#C5A059] text-black shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
@@ -350,7 +415,7 @@ export default function App() {
             {/* RSVP Guest Experience */}
             <button
               onClick={() => setActiveTab('rsvp')}
-              className={`py-2 px-3 sm:px-4 text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`py-1.5 sm:py-2 px-2.5 sm:px-4 text-[11px] sm:text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
                 activeTab === 'rsvp'
                   ? 'bg-[#C5A059] text-black shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
@@ -363,7 +428,7 @@ export default function App() {
             {/* Pantalla Escenario */}
             <button
               onClick={() => setActiveTab('stage')}
-              className={`py-2 px-3 sm:px-4 text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`py-1.5 sm:py-2 px-2.5 sm:px-4 text-[11px] sm:text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
                 activeTab === 'stage'
                   ? 'bg-[#C5A059] text-black shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
@@ -376,7 +441,7 @@ export default function App() {
             {/* Muro en Vivo Moderación */}
             <button
               onClick={() => setActiveTab('muro-admin')}
-              className={`py-2 px-3 sm:px-4 text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`py-1.5 sm:py-2 px-2.5 sm:px-4 text-[11px] sm:text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
                 activeTab === 'muro-admin'
                   ? 'bg-[#C5A059] text-black shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
@@ -389,7 +454,7 @@ export default function App() {
             {/* Pantalla Gigante Proyector */}
             <button
               onClick={() => setActiveTab('pantalla-proyector')}
-              className={`py-2 px-3 sm:px-4 text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`py-1.5 sm:py-2 px-2.5 sm:px-4 text-[11px] sm:text-xs font-montserrat tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
                 activeTab === 'pantalla-proyector'
                   ? 'bg-[#C5A059] text-black shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
@@ -399,6 +464,35 @@ export default function App() {
               <span>Pantalla Proyector</span>
             </button>
           </nav>
+
+          {/* Desktop Admin Security Controls (hidden on mobile, visible on md and up) */}
+          {isAdminAuthenticated && (
+            <div className="hidden md:flex items-center gap-1.5 border-l border-white/10 pl-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsChangePasswordModalOpen(true)}
+                className="py-1.5 px-2.5 text-[11px] font-montserrat tracking-wider uppercase text-[#C5A059]/90 hover:text-[#C5A059] hover:bg-white/5 border border-[#C5A059]/30 flex items-center gap-1 transition-colors cursor-pointer"
+                title="Cambiar la clave de acceso del panel"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-[#C5A059]" />
+                <span className="hidden xl:inline">Clave</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm('¿Deseas cerrar la sesión del panel de administración?')) {
+                    AuthService.logout();
+                    setIsAdminAuthenticated(false);
+                  }
+                }}
+                className="py-1.5 px-2.5 text-[11px] font-montserrat tracking-wider uppercase text-rose-300 hover:text-white hover:bg-rose-950/40 border border-rose-500/30 flex items-center gap-1 transition-colors cursor-pointer"
+                title="Cerrar sesión de administrador en este dispositivo"
+              >
+                <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                <span className="hidden sm:inline">Salir</span>
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -454,6 +548,7 @@ export default function App() {
             onOpenRSVPPage={handleOpenRSVPPage}
             onGoToScanner={() => setActiveTab('scanner')}
             onGoToLiveWall={() => setActiveTab('muro-admin')}
+            onOpenChangePassword={() => setIsChangePasswordModalOpen(true)}
           />
         )}
 
@@ -748,6 +843,24 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Modal para cambiar la clave */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordModalOpen}
+        onClose={() => setIsChangePasswordModalOpen(false)}
+        onSuccessToast={(msg) => {
+          setPasswordToast(msg);
+          setTimeout(() => setPasswordToast(null), 3000);
+        }}
+      />
+
+      {/* Toast Notification */}
+      {passwordToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#141414] border border-[#C5A059] text-[#FAF7F2] px-4 py-3 shadow-2xl flex items-center gap-2 font-montserrat text-xs animate-fade-in">
+          <span className="text-[#C5A059] font-bold">✓</span>
+          <span>{passwordToast}</span>
+        </div>
+      )}
     </div>
   );
 }

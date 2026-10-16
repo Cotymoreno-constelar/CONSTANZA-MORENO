@@ -7,6 +7,9 @@ import {
   Share2,
   CheckCircle2,
   Clock,
+  Phone,
+  Mail,
+  MapPin,
   XCircle,
   Eye,
   Trash2,
@@ -27,7 +30,8 @@ import {
   Image as ImageIcon,
   FileSpreadsheet,
   QrCode,
-  Zap
+  Zap,
+  KeyRound
 } from 'lucide-react';
 import { Guest, EventStats, GuestCategory, RSVPStatus } from '../../types/guest';
 import { GuestService, calculateStats } from '../../services/guestService';
@@ -44,6 +48,7 @@ interface AdminDashboardProps {
   onOpenRSVPPage: (guest: Guest) => void;
   onGoToScanner: () => void;
   onGoToLiveWall?: () => void;
+  onOpenChangePassword?: () => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -52,6 +57,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenRSVPPage,
   onGoToScanner,
   onGoToLiveWall,
+  onOpenChangePassword,
 }) => {
   const [searchFilter, setSearchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -402,135 +408,153 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Quick Scanner shortcut */}
-          <button
-            onClick={onGoToScanner}
-            className="py-2.5 px-4 bg-gradient-to-r from-[#C5A059] to-[#8C6E38] hover:from-[#d4af37] hover:to-[#9a783e] text-black font-montserrat text-xs tracking-wider uppercase font-bold flex items-center gap-2 shadow-md cursor-pointer transition-all"
-          >
-            <Users className="w-4 h-4 text-black" />
-            <span>Abrir Escáner Puerta</span>
-          </button>
-
-          {/* Quick Live Wall shortcut */}
-          {onGoToLiveWall && (
+        <div className="w-full lg:w-auto flex flex-col gap-2.5">
+          {/* Mobile Top Primary Actions (Puerta & WhatsApp full touch width on phones) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {/* Quick Scanner shortcut */}
             <button
-              onClick={onGoToLiveWall}
-              className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-white border border-[#C5A059] font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-              title="Abrir moderación y pantalla de fotos en vivo"
+              onClick={onGoToScanner}
+              className="py-3 sm:py-2.5 px-4 bg-gradient-to-r from-[#C5A059] to-[#8C6E38] hover:from-[#d4af37] hover:to-[#9a783e] text-black font-montserrat text-xs tracking-wider uppercase font-bold flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all"
             >
-              <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
-              <span>Muro en Vivo</span>
+              <Users className="w-4 h-4 text-black" />
+              <span>Abrir Escáner Puerta</span>
             </button>
-          )}
 
-          {/* Subir Logo Real */}
-          <button
-            onClick={() => {
-              setCustomLogoPreview(getCustomLogoUrl());
-              setIsLogoModalOpen(true);
-            }}
-            className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-[#C5A059] border border-[#C5A059] font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-            title="Subir el archivo de logo real (PNG, SVG o JPG) para aplicar en toda la app y tarjetas"
-          >
-            <ImageIcon className="w-3.5 h-3.5 text-[#C5A059]" />
-            <span>Logo Oficial</span>
-          </button>
+            {/* Automatizar Envíos WhatsApp (Piloto Automático & Cero Pestañas) */}
+            <button
+              onClick={() => setIsWhatsAppAutoModalOpen(true)}
+              className="py-3 sm:py-2.5 px-4 bg-gradient-to-r from-emerald-950 via-[#161616] to-[#1c1810] hover:bg-emerald-900/60 text-[#25D366] border border-[#25D366]/60 font-montserrat text-xs tracking-wider uppercase font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
+              title="Centro de Automatización de WhatsApp: Despacho en pestaña única inteligente, lista de difusión y exportación de contactos"
+            >
+              <MessageCircle className="w-4 h-4 text-[#25D366]" />
+              <span>Automatizar WhatsApp</span>
+              {pendingWhatsAppCount > 0 && (
+                <span className="px-1.5 py-0.5 bg-[#25D366] text-black text-[9px] font-mono font-black rounded-full leading-none">
+                  {pendingWhatsAppCount}
+                </span>
+              )}
+            </button>
+          </div>
 
-          {/* Automatizar Envíos WhatsApp (Piloto Automático & Cero Pestañas) */}
-          <button
-            onClick={() => setIsWhatsAppAutoModalOpen(true)}
-            className="py-2.5 px-3.5 bg-gradient-to-r from-emerald-950 via-[#161616] to-[#1c1810] hover:bg-emerald-900/60 text-[#25D366] border border-[#25D366]/60 font-montserrat text-xs tracking-wider uppercase font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md"
-            title="Centro de Automatización de WhatsApp: Despacho en pestaña única inteligente, lista de difusión y exportación de contactos"
-          >
-            <MessageCircle className="w-4 h-4 text-[#25D366]" />
-            <span>Automatizar WhatsApp</span>
-            {pendingWhatsAppCount > 0 && (
-              <span className="px-1.5 py-0.5 bg-[#25D366] text-black text-[9px] font-mono font-black rounded-full leading-none">
-                {pendingWhatsAppCount}
-              </span>
+          {/* Secondary Action Buttons Grid on Mobile */}
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
+            {/* Add Single Guest */}
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="py-2.5 px-3 bg-[#181818] hover:bg-[#252525] text-white border border-[#C5A059]/50 font-montserrat text-xs tracking-wider uppercase font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <UserPlus className="w-3.5 h-3.5 text-[#C5A059]" />
+              <span>Nuevo</span>
+            </button>
+
+            {/* Centro Generador de QR & Lotes */}
+            <button
+              onClick={() => setIsBatchDownloadModalOpen(true)}
+              className="py-2.5 px-3 bg-gradient-to-r from-[#261f12] to-[#181818] hover:from-[#C5A059] hover:to-[#d4af37] text-[#E7CF98] hover:text-black border border-[#C5A059] font-montserrat text-xs tracking-wider uppercase font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+              title="Abrir Centro Generador de Códigos QR y descarga masiva de tarjetas en ZIP o PDF"
+            >
+              <QrCode className="w-3.5 h-3.5" />
+              <span>Lote QR</span>
+            </button>
+
+            {/* Bulk Import Excel / CSV */}
+            <button
+              onClick={() => setIsBulkModalOpen(true)}
+              className="py-2.5 px-3 bg-[#181818] hover:bg-[#252525] text-[#E7CF98] border border-[#C5A059]/60 font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              title="Importar lista de invitados desde archivo Excel (.xlsx, .xls, .csv) o copiar y pegar"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-[#C5A059]" />
+              <span>Importar</span>
+            </button>
+
+            {/* Export Excel (.xlsx) */}
+            <button
+              onClick={() => exportGuestsToExcel(guests)}
+              className="py-2.5 px-3 bg-[#181818] hover:bg-[#252525] text-white border border-white/20 font-montserrat text-xs tracking-wider uppercase font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              title="Descargar padrón completo, confirmados e ingresados en formato Excel (.xlsx)"
+            >
+              <Download className="w-3.5 h-3.5 text-[#C5A059]" />
+              <span>Exportar</span>
+            </button>
+
+            {/* Recordatorio Hoy por WhatsApp */}
+            <button
+              onClick={() => setIsReminderModalOpen(true)}
+              className="py-2.5 px-3 bg-gradient-to-r from-emerald-950 to-[#181818] hover:bg-emerald-900/60 text-emerald-300 border border-emerald-500/50 font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              title="Enviar mensaje de recordatorio del día del evento a los invitados confirmados"
+            >
+              <Bell className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Recordar ({stats.confirmedGuests})</span>
+            </button>
+
+            {/* Quick Live Wall shortcut */}
+            {onGoToLiveWall && (
+              <button
+                onClick={onGoToLiveWall}
+                className="py-2.5 px-3 bg-[#181818] hover:bg-[#252525] text-white border border-[#C5A059] font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                title="Abrir moderación y pantalla de fotos en vivo"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
+                <span>Muro</span>
+              </button>
             )}
-          </button>
 
-          {/* Recordatorio Hoy por WhatsApp */}
-          <button
-            onClick={() => setIsReminderModalOpen(true)}
-            className="py-2.5 px-3.5 bg-gradient-to-r from-emerald-950 to-[#181818] hover:bg-emerald-900/60 text-emerald-300 border border-emerald-500/50 font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-            title="Enviar mensaje de recordatorio del día del evento a los invitados confirmados"
-          >
-            <Bell className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Recordatorio Hoy ({stats.confirmedGuests})</span>
-          </button>
+            {/* Subir Logo Real */}
+            <button
+              onClick={() => {
+                setCustomLogoPreview(getCustomLogoUrl());
+                setIsLogoModalOpen(true);
+              }}
+              className="py-2.5 px-3 bg-[#181818] hover:bg-[#252525] text-[#C5A059] border border-[#C5A059] font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              title="Subir el archivo de logo real (PNG, SVG o JPG) para aplicar en toda la app y tarjetas"
+            >
+              <ImageIcon className="w-3.5 h-3.5 text-[#C5A059]" />
+              <span>Logo</span>
+            </button>
 
-          {/* Centro Generador de QR & Lotes */}
-          <button
-            onClick={() => setIsBatchDownloadModalOpen(true)}
-            className="py-2.5 px-3.5 bg-gradient-to-r from-[#261f12] to-[#181818] hover:from-[#C5A059] hover:to-[#d4af37] text-[#E7CF98] hover:text-black border border-[#C5A059] font-montserrat text-xs tracking-wider uppercase font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
-            title="Abrir Centro Generador de Códigos QR y descarga masiva de tarjetas en ZIP o PDF"
-          >
-            <QrCode className="w-3.5 h-3.5" />
-            <span>Generador de QR</span>
-          </button>
+            {/* Cambiar Clave de Acceso */}
+            {onOpenChangePassword && (
+              <button
+                onClick={onOpenChangePassword}
+                className="py-2.5 px-3 bg-[#181818] hover:bg-[#252525] text-white border border-white/20 font-montserrat text-xs tracking-wider uppercase font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                title="Cambiar la clave de acceso de administradores"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-[#C5A059]" />
+                <span>Clave</span>
+              </button>
+            )}
 
-          {/* Add Single Guest */}
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-white border border-[#C5A059]/50 font-montserrat text-xs tracking-wider uppercase font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <UserPlus className="w-3.5 h-3.5 text-[#C5A059]" />
-            <span>Nuevo Invitado</span>
-          </button>
-
-          {/* Bulk Import Excel / CSV */}
-          <button
-            onClick={() => setIsBulkModalOpen(true)}
-            className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-[#E7CF98] border border-[#C5A059]/60 font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-            title="Importar lista de invitados desde archivo Excel (.xlsx, .xls, .csv) o copiar y pegar"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-[#C5A059]" />
-            <span>Importar Excel</span>
-          </button>
-
-          {/* Export Excel (.xlsx) */}
-          <button
-            onClick={() => exportGuestsToExcel(guests)}
-            className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-white border border-white/20 font-montserrat text-xs tracking-wider uppercase font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="Descargar padrón completo, confirmados e ingresados en formato Excel (.xlsx)"
-          >
-            <Download className="w-3.5 h-3.5 text-[#C5A059]" />
-            <span>Exportar Excel</span>
-          </button>
-
-          {/* Recargar Lista Oficial de Invitados */}
-          <button
-            onClick={async () => {
-              if (window.confirm('¿Deseas recargar la lista oficial completa de 118 invitados de DIVO 20 Años y sincronizar el padrón?')) {
-                await GuestService.resetToOfficialList();
-              }
-            }}
-            className="py-2.5 px-3.5 bg-[#181818] hover:bg-[#252525] text-amber-300 border border-amber-500/40 font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-            title="Recargar la lista oficial de 118 invitados de DIVO 20 Años (útil si el navegador guardó una versión anterior en caché)"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-            <span>Recargar Lista Oficial</span>
-          </button>
-
-          {/* Vaciar Padrón */}
-          {guests.length > 0 && (
+            {/* Recargar Lista Oficial de Invitados */}
             <button
               onClick={async () => {
-                if (window.confirm(`¿Estás seguro de eliminar los ${guests.length} invitados actuales y vaciar el padrón por completo?`)) {
-                  await GuestService.clearAllGuests();
-                  setSelectedGuestForCard(null);
+                if (window.confirm('¿Deseas recargar la lista oficial completa de 118 invitados de DIVO 20 Años y sincronizar el padrón?')) {
+                  await GuestService.resetToOfficialList();
                 }
               }}
-              className="py-2.5 px-3.5 bg-rose-950/30 hover:bg-rose-900/60 text-rose-300 border border-rose-500/40 font-montserrat text-xs tracking-wider uppercase font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-              title="Eliminar todos los invitados actuales del padrón"
+              className="py-2.5 px-3 bg-[#181818] hover:bg-[#252525] text-amber-300 border border-amber-500/40 font-montserrat text-xs tracking-wider uppercase font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              title="Recargar la lista oficial de 118 invitados de DIVO 20 Años (útil si el navegador guardó una versión anterior en caché)"
             >
-              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-              <span>Vaciar Padrón</span>
+              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+              <span>Recargar 118</span>
             </button>
-          )}
+
+            {/* Vaciar Padrón */}
+            {guests.length > 0 && (
+              <button
+                onClick={async () => {
+                  if (window.confirm(`¿Estás seguro de eliminar los ${guests.length} invitados actuales y vaciar el padrón por completo?`)) {
+                    await GuestService.clearAllGuests();
+                    setSelectedGuestForCard(null);
+                  }
+                }}
+                className="py-2.5 px-3 bg-rose-950/30 hover:bg-rose-900/60 text-rose-300 border border-rose-500/40 font-montserrat text-xs tracking-wider uppercase font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                title="Eliminar todos los invitados actuales del padrón"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span>Vaciar</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -630,7 +654,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {/* Status Filters */}
-        <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
+        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1.5 md:pb-0 scrollbar-none whitespace-nowrap">
           {[
             { id: 'all', label: 'Todos' },
             { id: 'confirmed', label: 'Confirmados' },
@@ -673,9 +697,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       </div>
 
-      {/* Guests Table */}
+      {/* Guests Container (Responsive Table on Desktop, Cards on Mobile) */}
       <div className="bg-[#111111] border border-[#C5A059]/30 overflow-hidden shadow-xl rounded-sm">
-        <div className="overflow-x-auto">
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="bg-black/70 border-b border-white/10 text-neutral-400 font-montserrat text-[10px] tracking-wider uppercase">
@@ -1088,6 +1113,182 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* MOBILE CARDS VIEW (Dispositivos Móviles < 768px) */}
+        <div className="block md:hidden divide-y divide-white/10">
+          {filteredGuests.map((guest) => {
+            const rsvpUrl = GuestService.getRSVPUrl(guest);
+            const waUrl = GuestService.getWhatsAppShareUrl(guest);
+
+            return (
+              <div key={guest.id} className="p-3.5 bg-[#141414] hover:bg-[#181818] transition-colors space-y-3">
+                {/* Header: Name + Status Badge */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(guest)}
+                      className="font-montserrat font-bold text-white text-base text-left flex items-center gap-1.5 hover:text-[#C5A059] transition-colors"
+                    >
+                      <span className="truncate">{guest.firstName} {guest.lastName}</span>
+                      <Edit2 className="w-3.5 h-3.5 text-[#C5A059] shrink-0 opacity-70" />
+                    </button>
+
+                    {/* Category & Location */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                      <span className="px-2 py-0.5 bg-[#1f1b14] border border-[#C5A059]/40 text-[#E7CF98] font-montserrat text-[10px] font-bold uppercase tracking-wider">
+                        {guest.category}
+                      </span>
+                      {guest.tableOrSeat && (
+                        <span className="text-[10px] font-mono text-white/60 flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-[#C5A059]" />
+                          <span>{guest.tableOrSeat}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Status Dropdown / Badge */}
+                  <select
+                    value={guest.status}
+                    onChange={async (e) => {
+                      const nextStatus = e.target.value as RSVPStatus;
+                      await GuestService.updateGuest(guest.id, {
+                        status: nextStatus,
+                        confirmedCompanions:
+                          nextStatus === 'confirmed'
+                            ? guest.confirmedCompanions || guest.companionsAllowed
+                            : 0,
+                      });
+                    }}
+                    className={`text-[10px] font-montserrat uppercase font-bold px-2 py-1 border rounded-none cursor-pointer focus:outline-none ${
+                      guest.status === 'confirmed'
+                        ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
+                        : guest.status === 'declined'
+                        ? 'bg-rose-950/80 text-rose-300 border-rose-500/50'
+                        : 'bg-amber-950/80 text-amber-300 border-amber-500/50'
+                    }`}
+                  >
+                    <option value="confirmed">✓ Confirmado</option>
+                    <option value="pending">⏳ Pendiente</option>
+                    <option value="declined">✕ No Asiste</option>
+                  </select>
+                </div>
+
+                {/* Details Row: Phone, Companions */}
+                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono bg-black/40 p-2.5 border border-white/5">
+                  <div>
+                    <span className="text-white/40 block text-[9px] uppercase tracking-wider font-montserrat">Teléfono</span>
+                    {guest.phone ? (
+                      <span className="text-white font-medium flex items-center gap-1 mt-0.5">
+                        <Phone className="w-3 h-3 text-[#C5A059]" />
+                        <span className="truncate">{guest.phone}</span>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(guest)}
+                        className="text-[#C5A059]/70 hover:text-[#C5A059] text-[10px] underline"
+                      >
+                        + Agregar número
+                      </button>
+                    )}
+                  </div>
+
+                  <div>
+                    <span className="text-white/40 block text-[9px] uppercase tracking-wider font-montserrat">Acompañantes</span>
+                    <span className="text-white/90 block mt-0.5 truncate">
+                      {guest.companionsAllowed > 0
+                        ? `+${guest.confirmedCompanions ?? guest.companionsAllowed} ${guest.companionName ? `(${guest.companionName})` : ''}`
+                        : 'Individual'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* WhatsApp Status + Door Check-in Mobile Touch Bar */}
+                <div className="flex flex-col gap-2">
+                  {/* Door Check-in Button (Touch Optimized) */}
+                  {guest.checkedIn ? (
+                    <button
+                      type="button"
+                      onClick={() => GuestService.undoCheckIn(guest.id)}
+                      className="w-full py-2.5 px-3 bg-purple-950/70 hover:bg-rose-950/70 border border-purple-500/50 text-purple-200 font-montserrat text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span>Ingresado {guest.checkedInAt ? `(${new Date(guest.checkedInAt).toLocaleTimeString('es-AR')})` : ''} • Anular</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => GuestService.registerCheckIn(guest.id, 'Panel Mobile', true)}
+                      className="w-full py-2.5 px-3 bg-gradient-to-r from-[#1c1912] to-[#141414] hover:bg-emerald-950/60 border border-[#C5A059]/40 hover:border-emerald-500/60 text-[#E7CF98] hover:text-emerald-300 font-montserrat text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                    >
+                      <Users className="w-4 h-4 text-[#C5A059]" />
+                      <span>Marcar Ingreso en Puerta</span>
+                    </button>
+                  )}
+
+                  {/* Mobile Quick Action Buttons Bar */}
+                  <div className="grid grid-cols-4 gap-1.5 pt-1">
+                    {/* WhatsApp Direct Send */}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        openWhatsAppInSingleTab(waUrl);
+                        await GuestService.markWhatsAppSent(guest.id, true);
+                      }}
+                      className={`py-2 px-1 text-[11px] font-montserrat font-bold uppercase flex items-center justify-center gap-1 border transition-colors cursor-pointer ${
+                        guest.whatsappSent
+                          ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/40'
+                          : 'bg-[#25D366]/15 hover:bg-[#25D366]/30 text-[#25D366] border-[#25D366]/50'
+                      }`}
+                      title="Enviar mensaje por WhatsApp (Pestaña única inteligente)"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" />
+                      <span>{guest.whatsappSent ? 'Enviado' : 'Enviar'}</span>
+                    </button>
+
+                    {/* QR Code */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGuestForCard(guest)}
+                      className="py-2 px-1 bg-[#1a1710] hover:bg-[#C5A059]/20 text-[#E7CF98] border border-[#C5A059]/40 font-montserrat text-[11px] font-bold uppercase flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <QrCode className="w-3.5 h-3.5 text-[#C5A059]" />
+                      <span>Ver QR</span>
+                    </button>
+
+                    {/* Edit Modal */}
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(guest)}
+                      className="py-2 px-1 bg-white/5 hover:bg-white/10 text-white/90 border border-white/15 font-montserrat text-[11px] font-medium uppercase flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <Edit2 className="w-3.5 h-3.5 text-[#C5A059]" />
+                      <span>Editar</span>
+                    </button>
+
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteGuest(guest.id, `${guest.firstName} ${guest.lastName}`)}
+                      className="py-2 px-1 bg-rose-950/20 hover:bg-rose-900/40 text-rose-300 border border-rose-500/30 font-montserrat text-[11px] font-medium uppercase flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Borrar</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {filteredGuests.length === 0 && (
+            <div className="p-8 text-center text-white/60 font-montserrat">
+              No se encontraron invitados con los filtros seleccionados.
+            </div>
+          )}
         </div>
       </div>
 
