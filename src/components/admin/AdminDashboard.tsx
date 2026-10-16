@@ -745,6 +745,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <tr className="bg-black/70 border-b border-white/10 text-neutral-400 font-montserrat text-[10px] tracking-wider uppercase">
                 <th className="py-3 px-4">Invitado / Nombre</th>
                 <th className="py-3 px-3">Categoría & Ubicación</th>
+                <th className="py-3 px-3">Emisor</th>
                 <th className="py-3 px-3">Estado RSVP</th>
                 <th className="py-3 px-3">WhatsApp</th>
                 <th className="py-3 px-3">Acompañante</th>
@@ -856,6 +857,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           title="Editar sector o mesa asignada (Enter para guardar)"
                         />
                       </div>
+                    </td>
+
+                    {/* Emisor (Coty / Yasmin) */}
+                    <td className="py-3.5 px-3">
+                      <select
+                        value={guest.sender === 'Coty' || guest.sender === 'Yasmin' ? guest.sender : 'Sin asignar'}
+                        onChange={(e) =>
+                          GuestService.updateGuest(guest.id, {
+                            sender: e.target.value === 'Sin asignar' ? undefined : (e.target.value as GuestSender),
+                          })
+                        }
+                        className={`px-2 py-0.5 text-[10px] font-mono uppercase border focus:outline-none cursor-pointer ${
+                          guest.sender === 'Coty'
+                            ? 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+                            : guest.sender === 'Yasmin'
+                            ? 'bg-sky-950/40 border-sky-500/40 text-sky-300'
+                            : 'bg-white/5 border-white/15 text-white/50'
+                        }`}
+                        title="Quién envía la invitación"
+                      >
+                        <option value="Sin asignar" className="bg-[#141414] text-white">Sin asignar</option>
+                        <option value="Coty" className="bg-[#141414] text-white">Coty</option>
+                        <option value="Yasmin" className="bg-[#141414] text-white">Yasmin</option>
+                      </select>
                     </td>
 
                     {/* RSVP Status (Inline Editable) */}
@@ -1116,7 +1141,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               {filteredGuests.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-white/60 font-montserrat">
+                  <td colSpan={8} className="py-12 text-center text-white/60 font-montserrat">
                     {guests.length === 0 ? (
                       <div className="flex flex-col items-center justify-center gap-3">
                         <div className="text-sm font-bold text-[#E7CF98] uppercase tracking-wider">
